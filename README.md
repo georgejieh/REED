@@ -11,7 +11,7 @@ REED is a scheduled agent runtime that generates structured market digests. It r
 1. Clone the repo and change into it.
 2. `cd backend && cp .env.example .env` and add keys for the providers you want to use.
 3. `uv sync`
-4. Run the setup wizard: `python cli_setup.py` (run from inside `backend/`)
+4. Run the setup wizard: `python cli_setup.py` (run from inside `backend/`). By default it reads `.env` from the repo root and detects which providers you have keys for.
 5. Start the backend: `docker compose up backend` (or `uv run uvicorn app.main:app --port 8000`)
 6. In a second terminal, start the dashboard:
    ```bash
