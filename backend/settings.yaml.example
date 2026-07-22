@@ -18,6 +18,8 @@ sessions:
 search:
   provider: ddgs              # one of: ddgs | brave | tavily
   rate_limit_per_minute: 12
+  # BRAVE_API_KEY=   (required if provider is brave)
+  # TAVILY_API_KEY=  (required if provider is tavily)
 market_data:
   provider: stooq
 data_dir: ./data/digests

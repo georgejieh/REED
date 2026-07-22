@@ -120,6 +120,15 @@ Optional search backends: `ddgs` (default, keyless), `BRAVE_API_KEY`,
 `TAVILY_API_KEY`. Optional storage mode: `REED_STORE=mirror` plus
 `HF_DATASET_REPO` and `HF_TOKEN` for Hugging Face Spaces.
 
+### Search providers
+
+Set `search.provider` to one of `ddgs`, `brave`, or `tavily` in
+`backend/settings.yaml`:
+
+- `ddgs`: DuckDuckGo, keyless.
+- `brave`: Brave Search API, requires `BRAVE_API_KEY`.
+- `tavily`: Tavily API, requires `TAVILY_API_KEY`.
+
 Sessions are defined in `backend/app/sessions/`. Built-in sessions:
 
 - `pre_market`, before the US equity open.
