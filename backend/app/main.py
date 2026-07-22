@@ -1,8 +1,8 @@
-from fastapi import FastAPI
+"""REED backend entry point.
 
-app = FastAPI(title="REED", version="0.1.0")
+Use `uv run uvicorn app.main:app` to run the server.
+"""
 
+from app.api import build_app
 
-@app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "reed"}
+app = build_app()
