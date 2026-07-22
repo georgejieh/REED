@@ -1,9 +1,9 @@
 """JSON-file storage for digests.
 
-The DigestStore protocol lets Chunk 3d wrap this with a HF Dataset
-mirror without changing call sites. The default implementation writes
-one JSON file per digest under data_dir and rebuilds a small
-_index.json on every write.
+The DigestStore protocol lets a future HF Dataset mirror wrap this
+without changing call sites. The default implementation writes one
+JSON file per digest under data_dir and rebuilds a small _index.json
+on every write.
 """
 
 from __future__ import annotations

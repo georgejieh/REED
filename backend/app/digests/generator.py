@@ -1,13 +1,9 @@
-"""Digest generator. Stub for now; Chunk 2b adds the agent runner.
+"""Digest generator.
 
-This module's job: take a session name and an optional pre-fetched
-market snapshot, run the provider with the session's prompt template
-and JSON-mode enabled, parse the response into a Digest, and write it
-via the store.
-
-For now the provider call is a deterministic stub that returns a
-fixture-shaped JSON string, so the pipeline can be tested end-to-end
-without keys.
+Produces a Digest from a session's provider + JSON output. The
+generator invokes the configured provider with json_mode=True, parses
+the response, merges the pre-fetched market snapshot, and writes the
+digest via the configured store.
 """
 
 from __future__ import annotations
@@ -27,7 +23,8 @@ logger = logging.getLogger(__name__)
 def make_stub_provider_result() -> ProviderResult:
     """Return a deterministic stub result used when no real provider is wired.
 
-    Chunk 2b replaces this with the real agent-runner-driven result.
+    A future release replaces this with a real result driven by the
+    agent runner.
     """
     return ProviderResult(
         text=json.dumps(_STUB_DIGEST_PAYLOAD),
@@ -39,7 +36,7 @@ def make_stub_provider_result() -> ProviderResult:
 
 _STUB_DIGEST_PAYLOAD: dict = {
     "headline": "Stub digest for pipeline smoke test",
-    "executive_summary": "This digest is produced by the chunk 0c stub.",
+    "executive_summary": "This digest is produced by the placeholder generator.",
     "stories": [
         {
             "tickers": ["SPY"],
