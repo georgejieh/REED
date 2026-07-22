@@ -9,7 +9,6 @@ The operator supplies base_url via the wizard or settings.yaml.
 
 from __future__ import annotations
 
-from app.providers.base import LLMProvider
 from app.providers.openai_provider import OpenAIProvider
 
 

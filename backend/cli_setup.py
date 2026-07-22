@@ -16,10 +16,8 @@ from pathlib import Path
 import yaml
 
 from app.config import (
-    AppConfig,
     EnvSettings,
     MarketDataConfig,
-    MarketDataProviderName,
     ProviderName,
     SchedulerConfig,
     SearchConfig,
