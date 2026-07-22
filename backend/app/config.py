@@ -142,10 +142,14 @@ def load_config() -> AppConfig:
 
     api_keys = _collect_api_keys(env)
 
+    base_url = settings.base_url
+    if settings.provider == ProviderName.OLLAMA and base_url is None:
+        base_url = env.ollama_host
+
     return AppConfig(
         provider=settings.provider,
         model=settings.model,
-        base_url=settings.base_url,
+        base_url=base_url,
         sessions=settings.sessions,
         search=SearchConfig(
             provider=SearchProviderName(env.reed_search_provider),
