@@ -140,7 +140,7 @@ def write_settings(
         sessions=SessionsConfig(),
         search=SearchConfig(provider=SearchProviderName.DDGS, rate_limit_per_minute=12),
         market_data=MarketDataConfig(),
-        data_dir=Path("../data/digests"),
+        data_dir=Path("./data/digests"),
         scheduler=SchedulerConfig(),
         trigger=TriggerConfig(),
     )
@@ -164,8 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--out",
-        default="../settings.yaml",
-        help="Path to write settings.yaml (default: ../settings.yaml, repo root)",
+        default="settings.yaml",
+        help="Path to write settings.yaml (default: settings.yaml, relative to backend/)",
     )
     parser.add_argument(
         "--non-interactive",

@@ -26,7 +26,11 @@ class ScrapeResult:
 
 
 def scrape_url(url: str, *, timeout: float = 4.0) -> ScrapeResult:
-    """Placeholder scrape tool. Real implementation lands in Chunk 1b."""
+    """Placeholder scrape tool that always returns an error.
+
+    Replaced by a real httpx + trafilatura implementation in a later
+    release of REED.
+    """
     return ScrapeResult(url=url, text="", ok=False, error="scraper not yet implemented")
 
 
