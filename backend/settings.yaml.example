@@ -1,4 +1,4 @@
-# REED operator settings — written by `python cli_setup.py` (wizard).
+# REED operator settings, written by `python cli_setup.py` (wizard).
 # Re-run the wizard any time to regenerate this file. The wizard
 # detects which keys you have in `.env` and only lists those providers;
 # there is no default recommendation.
@@ -22,7 +22,7 @@ market_data:
   provider: stooq
 data_dir: ./data/digests
 scheduler:
-  enabled: true               # set false on HF Space — let external cron drive
+  enabled: true               # set false on HF Space; let external cron drive
   timezone: US/Eastern
   skip_holidays: true
 trigger:
