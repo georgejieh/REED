@@ -33,6 +33,13 @@ The wizard writes `backend/settings.yaml` based on the keys it finds in `.env`. 
 | Ollama | `OLLAMA_HOST` (local) + `OLLAMA_API_KEY` (cloud) |
 | OpenAI-compatible | any `base_url` + `api_key` you configure in settings |
 
+Sessions are defined in `backend/app/sessions/`. Built-in sessions:
+- `pre_market` - before the US equity open
+- `early_market` - first hour of trading
+- `midday` - mid-session recap
+- `close` - end-of-day summary
+- `weekend_recap` - Saturday wrap of the week
+
 Optional search backends: `ddgs` (default, keyless), `BRAVE_API_KEY`, `TAVILY_API_KEY`.
 Optional storage mode: `REED_STORE=mirror` plus `HF_DATASET_REPO` and `HF_TOKEN` for HF Spaces.
 
