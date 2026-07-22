@@ -1,9 +1,9 @@
 """Digest generator.
 
-Produces a Digest from a session's provider + JSON output. The
-generator invokes the configured provider with json_mode=True, parses
-the response, merges the pre-fetched market snapshot, and writes the
-digest via the configured store.
+Orchestrates the full pipeline for one session: lookup the SessionDef,
+fetch a market snapshot, run the agent loop with the session's prompt
+templates, parse the agent's JSON output into a Digest, and persist
+the digest via the configured DigestStore.
 """
 
 from __future__ import annotations
@@ -12,26 +12,17 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from app.agents.runner import run_agent
+from app.agents.tools import get_agent_tools
 from app.config import AppConfig
-from app.digests.models import Digest, Generation, MarketSnapshotMeta, Story
+from app.digests.models import Digest, Generation, MarketSnapshotMeta, Source, Story
 from app.digests.store import DigestStore
+from app.market_data.factory import get_market_data_provider
+from app.market_data.base import Quote
 from app.providers.base import LLMProvider, ProviderResult
+from app.sessions.registry import all_sessions
 
 logger = logging.getLogger(__name__)
-
-
-def make_stub_provider_result() -> ProviderResult:
-    """Return a deterministic stub result used when no real provider is wired.
-
-    A future release replaces this with a real result driven by the
-    agent runner.
-    """
-    return ProviderResult(
-        text=json.dumps(_STUB_DIGEST_PAYLOAD),
-        tool_calls=[],
-        usage={},
-        raw=None,
-    )
 
 
 _STUB_DIGEST_PAYLOAD: dict = {
@@ -53,54 +44,146 @@ _STUB_DIGEST_PAYLOAD: dict = {
 }
 
 
+def make_stub_provider_result() -> ProviderResult:
+    """Return a deterministic stub result used when no real provider is wired."""
+    return ProviderResult(
+        text=json.dumps(_STUB_DIGEST_PAYLOAD),
+        tool_calls=[],
+        usage={},
+        raw=None,
+    )
+
+
+def _snapshot_to_dict(quotes: dict[str, Quote]) -> dict[str, dict[str, str | None]]:
+    out: dict[str, dict[str, str | None]] = {}
+    for symbol, quote in quotes.items():
+        out[symbol] = {
+            "value": quote.value,
+            "change_pct": quote.change_pct,
+            "as_of": quote.as_of,
+        }
+    return out
+
+
+def _merge_payload(
+    payload: dict,
+    snapshot: dict[str, dict[str, str | None]],
+) -> dict:
+    """Return payload with the live snapshot merged in under market_snapshot."""
+    merged = dict(payload)
+    merged["market_snapshot"] = {k: v["value"] for k, v in snapshot.items()}
+    return merged
+
+
+def _parse_payload(payload: dict, snapshot: dict[str, dict[str, str | None]]) -> dict:
+    return _merge_payload(payload, snapshot)
+
+
 def generate_digest(
     *,
     session: str,
     config: AppConfig,
     provider: LLMProvider | None,
     store: DigestStore,
-    market_snapshot: dict[str, str],
-    market_snapshot_meta: MarketSnapshotMeta,
+    market_snapshot: dict[str, str] | None = None,
+    market_snapshot_meta: MarketSnapshotMeta | None = None,
 ) -> Digest:
     """Generate and persist a digest for the named session.
 
-    The provider is invoked with json_mode=True. The response text is
-    parsed as JSON and merged with the pre-fetched market snapshot and
-    generation metadata.
+    When `provider` is None, uses the stub pipeline for smoke tests.
+    Otherwise fetches a market snapshot, runs the agent, parses the
+    result, and writes the digest.
     """
+    names_to_defs = {s.name: s for s in all_sessions()}
+    if session not in names_to_defs:
+        raise ValueError(f"unknown session {session!r}")
+    session_def = names_to_defs[session]
+
     if provider is None:
         result = make_stub_provider_result()
         logger.info("using stub provider result (no provider wired)")
+        payload = json.loads(result.text)
+        turns = 1
+        tool_call_count = 0
+        scraped_url_count = 0
+        fallback_used = True
+        snapshot_quotes: dict[str, Quote] = {}
+        warning: str | None = None
+        duration_ms = 0
     else:
-        result = provider.generate(
-            system_prompt="stub system prompt",
-            user_prompt="stub user prompt",
-            json_mode=True,
+        market_provider = get_market_data_provider(config)
+        snapshot_quotes = market_provider.fetch_quotes()
+        snapshot_dict = _snapshot_to_dict(snapshot_quotes)
+
+        tools = get_agent_tools(config)
+        system_prompt = session_def.system_prompt
+        user_prompt = session_def.user_prompt_template.format(
+            topic=session_def.topic,
+            time_window=session_def.time_window,
         )
 
-    payload = json.loads(result.text)
+        agent_result = run_agent(
+            provider=provider,
+            tools=tools,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            market_snapshot=snapshot_dict,
+            max_turns=6,
+            json_mode=True,
+        )
+        if agent_result.parsed_json is None:
+            raise RuntimeError(
+                f"agent returned no parseable JSON: {agent_result.warning}"
+            )
+        payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
+        turns = agent_result.turns
+        tool_call_count = len(agent_result.tool_calls)
+        scraped_url_count = sum(
+            1
+            for tc in agent_result.tool_calls
+            if tc.get("name") == "scrape_url"
+        )
+        fallback_used = agent_result.fallback_used
+        warning = agent_result.warning
+        duration_ms = agent_result.duration_ms
+
     as_of = datetime.now(timezone.utc)
+    meta = market_snapshot_meta or MarketSnapshotMeta(
+        source="stooq" if snapshot_quotes else "stub",
+        fetched_at=as_of.isoformat(timespec="seconds"),
+        values_raw={},
+        delayed=True,
+    )
+
+    stories = [Story(**s) for s in payload.get("stories", [])]
+    sources = [Source(**s) for s in payload.get("sources", [])]
+
     digest = Digest(
         session=session,  # type: ignore[arg-type]
         as_of=as_of,
-        headline=payload["headline"],
-        executive_summary=payload["executive_summary"],
-        market_snapshot=market_snapshot,
-        market_snapshot_meta=market_snapshot_meta,
-        stories=[Story(**s) for s in payload.get("stories", [])],
+        headline=payload.get("headline", ""),
+        executive_summary=payload.get("executive_summary", ""),
+        market_snapshot=payload.get("market_snapshot", market_snapshot or {}),
+        market_snapshot_meta=meta,
+        stories=stories,
         themes=payload.get("themes", []),
         watch_next_session=payload.get("watch_next_session", []),
-        sources=payload.get("sources", []),
+        sources=sources,
         generation=Generation(
             provider=config.provider.value,
             model=config.model,
-            agent_turns=1,
-            tool_calls=0,
-            scraped_urls=0,
-            fallback_used=provider is None,
-            duration_ms=0,
+            agent_turns=turns,
+            tool_calls=tool_call_count,
+            scraped_urls=scraped_url_count,
+            fallback_used=fallback_used,
+            duration_ms=duration_ms,
         ),
     )
     store.write(digest)
-    logger.info("generated digest %s for session %s", digest.id, session)
+    logger.info(
+        "generated digest %s for session %s (warning=%s)",
+        digest.id,
+        session,
+        warning,
+    )
     return digest
