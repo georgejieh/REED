@@ -1,0 +1,9 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:7860"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./data/digests:/app/data/digests

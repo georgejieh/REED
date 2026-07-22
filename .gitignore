@@ -1,17 +1,33 @@
-# Ignore Python virtual environment folder
-venv/
-.env
-
-# Ignore system files
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/.venv/
+backend/venv/
+
+# Node
+node_modules/
+dashboard/dist/
+dashboard/.vite/
+
+# Env / secrets
+.env
+.env.local
+backend/.env
+dashboard/.env.local
+
+# Runtime data
+data/digests/
+!data/digests/.gitkeep
+data/samples/*.json
+!data/samples/example-digest.json
+
+# OS
 .DS_Store
+Thumbs.db
 
-# Ignore Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# Ignore logs and temporary files
+# Logs / temp
 *.log
 *.tmp

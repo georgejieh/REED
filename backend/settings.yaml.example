@@ -1,0 +1,29 @@
+# REED operator settings — written by `python cli_setup.py` (wizard).
+# Re-run the wizard any time to regenerate this file. The wizard
+# detects which keys you have in `.env` and only lists those providers;
+# there is no default recommendation.
+
+# provider: one of openai | anthropic | openrouter | ollama | openai_compatible
+# Set after running the wizard.
+provider:
+model:
+base_url:                     # only required for openai_compatible
+sessions:
+  enabled:
+    - pre_market
+    - early_market
+    - midday
+    - close
+    - weekend_recap
+search:
+  provider: ddgs              # one of: ddgs | brave | tavily
+  rate_limit_per_minute: 12
+market_data:
+  provider: stooq
+data_dir: ./data/digests
+scheduler:
+  enabled: true               # set false on HF Space — let external cron drive
+  timezone: US/Eastern
+  skip_holidays: true
+trigger:
+  enabled: false              # enable when REED_TRIGGER_TOKEN is set

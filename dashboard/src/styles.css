@@ -1,0 +1,26 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --fg: #e6e6e6;
+  --accent: #ffb000;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.reed-shell {
+  padding: 2rem;
+  max-width: 720px;
+}
+
+.reed-shell h1 {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  color: var(--accent);
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  letter-spacing: 0.05em;
+}
