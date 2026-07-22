@@ -129,7 +129,11 @@ def load_settings_yaml(path: Path) -> SettingsYaml:
 def load_config() -> AppConfig:
     """Build AppConfig from env vars and settings.yaml.
 
-    Precedence: env vars override settings.yaml where both apply.
+    settings.yaml is the source of truth for everything except the
+    provider's API key and OLLAMA_HOST. The wizard writes those YAML
+    values; env vars override only where the YAML has no value to set
+    (api keys come from .env, OLLAMA_HOST can come from .env when the
+    wizard was skipped).
     """
     env = EnvSettings()
     settings = load_settings_yaml(env.reed_settings_path)
@@ -151,17 +155,10 @@ def load_config() -> AppConfig:
         model=settings.model,
         base_url=base_url,
         sessions=settings.sessions,
-        search=SearchConfig(
-            provider=SearchProviderName(env.reed_search_provider),
-            rate_limit_per_minute=settings.search.rate_limit_per_minute,
-        ),
+        search=settings.search,
         market_data=settings.market_data,
-        data_dir=env.reed_data_dir,
-        scheduler=SchedulerConfig(
-            enabled=env.reed_scheduler_enabled,
-            timezone=settings.scheduler.timezone,
-            skip_holidays=env.reed_skip_holidays,
-        ),
+        data_dir=settings.data_dir,
+        scheduler=settings.scheduler,
         trigger=settings.trigger,
         api_keys=api_keys,
     )
