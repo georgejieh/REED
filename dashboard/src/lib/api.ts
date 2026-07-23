@@ -26,8 +26,8 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "GET" });
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "GET", signal });
   if (!res.ok) {
     throw new ApiError(res.status, `${path}: ${res.statusText}`);
   }
@@ -35,16 +35,19 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 /** GET /api/digests?limit=N. Returns the newest digests first. */
-export function listDigests(limit = 20): Promise<Digest[]> {
-  return getJson<Digest[]>(`/api/digests?limit=${encodeURIComponent(String(limit))}`);
+export function listDigests(limit = 20, signal?: AbortSignal): Promise<Digest[]> {
+  return getJson<Digest[]>(
+    `/api/digests?limit=${encodeURIComponent(String(limit))}`,
+    signal,
+  );
 }
 
 /** GET /api/digests/{id}. Returns one digest by id. */
-export function getDigest(id: string): Promise<Digest> {
-  return getJson<Digest>(`/api/digests/${encodeURIComponent(id)}`);
+export function getDigest(id: string, signal?: AbortSignal): Promise<Digest> {
+  return getJson<Digest>(`/api/digests/${encodeURIComponent(id)}`, signal);
 }
 
 /** GET /api/snapshot. Returns the live market snapshot from the configured provider. */
-export function getSnapshot(): Promise<SnapshotResponse> {
-  return getJson<SnapshotResponse>("/api/snapshot");
+export function getSnapshot(signal?: AbortSignal): Promise<SnapshotResponse> {
+  return getJson<SnapshotResponse>("/api/snapshot", signal);
 }
