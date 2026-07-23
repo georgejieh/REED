@@ -153,13 +153,34 @@ class DatasetMirrorStore(JsonFileStore):
 
     @staticmethod
     def _restore_backups(backups: dict[Path, Path], replaced: list[Path]) -> None:
+        """Restore backup files over replaced live files.
+
+        Attempts every restoration, logs each failure, then raises if
+        any restoration could not be undone. This keeps the live store's
+        rollback semantics recoverable and surfacing rather than silent.
+        """
+        failures: list[tuple[Path, OSError]] = []
         for local_path in replaced:
             backup = backups.get(local_path)
-            if backup is not None and backup.exists():
-                try:
-                    backup.replace(local_path)
-                except OSError:
-                    pass
+            if backup is None:
+                continue
+            if not backup.exists():
+                continue
+            try:
+                backup.replace(local_path)
+            except OSError as exc:
+                failures.append((local_path, exc))
+                logger.warning(
+                    "failed to restore backup %s to %s: %s",
+                    backup,
+                    local_path,
+                    exc,
+                )
+        if failures:
+            paths = ", ".join(str(p) for p, _ in failures)
+            raise RuntimeError(
+                f"rehydrate rollback incomplete; failed to restore {paths}"
+            ) from failures[0][1]  # noqa: B904
 
     @staticmethod
     def _cleanup_paths(paths: Iterable[Path]) -> None:
