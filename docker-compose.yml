@@ -6,4 +6,5 @@ services:
     env_file:
       - ./backend/.env
     volumes:
+      - ./backend/settings.yaml:/app/settings.yaml:ro
       - ./data/digests:/app/data/digests

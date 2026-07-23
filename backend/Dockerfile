@@ -5,7 +5,7 @@ WORKDIR /app
 # uv for fast, deterministic installs
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY app ./app
