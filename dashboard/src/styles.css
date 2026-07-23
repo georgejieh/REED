@@ -496,6 +496,7 @@ a {
 @media (max-width: 768px) {
   .app {
     grid-template-columns: 1fr;
+    grid-template-rows: 38vh minmax(0, 1fr);
   }
 
   .digest-list {
