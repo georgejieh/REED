@@ -31,21 +31,11 @@ export function MarketSnapshotStrip({ snapshot }: MarketSnapshotStripProps) {
           return (
             <dl key={symbol} className="snapshot-tile">
               <dt>{label}</dt>
-              <dd style={{ fontVariantNumeric: "tabular-nums" }}>
+              <dd>
                 {item.value}
                 {item.change_pct ? ` (${item.change_pct})` : null}
                 {item.delayed ? (
-                  <span
-                    aria-label="delayed"
-                    style={{
-                      display: "inline-block",
-                      width: "6px",
-                      height: "6px",
-                      borderRadius: "50%",
-                      background: "#ffb000",
-                      marginLeft: "6px",
-                    }}
-                  />
+                  <span className="delayed-dot" aria-label="delayed" />
                 ) : null}
               </dd>
             </dl>

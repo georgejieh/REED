@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import { getSentimentColor, SENTIMENT_LABELS } from "../lib/sentiment";
 import type { Sentiment } from "../lib/types";
 
 export interface SentimentGaugeProps {
@@ -5,27 +7,19 @@ export interface SentimentGaugeProps {
   "aria-label"?: string;
 }
 
-const SENTIMENT_COLORS: Record<Sentiment, string> = {
-  bullish: "#00d084",
-  bearish: "#ff4d4d",
-  neutral: "#7a8595",
-};
-
 /** Renders a small horizontal sentiment indicator. */
 export function SentimentGauge({
   sentiment,
   "aria-label": ariaLabel,
 }: SentimentGaugeProps) {
+  const style = { "--sentiment-color": getSentimentColor(sentiment) } as CSSProperties;
+
   return (
     <span
-      aria-label={ariaLabel ?? `Sentiment: ${sentiment}`}
+      className="sentiment-gauge"
+      aria-label={ariaLabel ?? `Sentiment: ${SENTIMENT_LABELS[sentiment]}`}
       role="img"
-      style={{
-        display: "inline-block",
-        width: "24px",
-        height: "4px",
-        background: SENTIMENT_COLORS[sentiment],
-      }}
+      style={style}
     />
   );
 }
