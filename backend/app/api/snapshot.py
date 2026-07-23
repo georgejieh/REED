@@ -26,9 +26,9 @@ def snapshot(config: AppConfig = Depends(get_config)) -> dict:
     try:
         provider = get_market_data_provider(config)
         quotes = provider.fetch_quotes()
-    except Exception as exc:
-        logger.warning("snapshot fetch failed: %s", exc)
-        raise HTTPException(status_code=503, detail=f"snapshot failed: {exc}")
+    except Exception:
+        logger.warning("snapshot fetch failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="market data provider unavailable")
 
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     values: dict[str, dict[str, str | None | bool]] = {}
