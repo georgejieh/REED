@@ -163,9 +163,18 @@ The backend is built to run anywhere and assumes no specific host:
 - **Local.** One `docker compose up` runs the backend and dashboard
   together.
 - **VPS.** The same container on a small always-on box, with the
-  scheduler running in-process.
+  scheduler running in-process. See `scripts/deploy_vps.sh` for an
+  idempotent deploy helper.
 - **Hugging Face Spaces.** An HF-compatible image, woken on schedule by
-  an external cron that calls a token-protected trigger endpoint.
+  an external cron that calls a token-protected trigger endpoint. See
+  `docs/HF_DEPLOYMENT.md` for the full setup.
+
+The dashboard has two build modes. `npm run build` reads the live API
+and is meant to be served next to the backend. `npm run build:demo`
+reads a public HF Dataset repo at build time, falls back to a baked
+sample when the dataset is unreachable, and is meant to be hosted
+statically on any CDN. See `docs/HF_DEPLOYMENT.md` for the URL
+pattern.
 
 ## Roadmap
 
