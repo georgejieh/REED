@@ -24,11 +24,14 @@ class BraveProvider(SearchProvider):
         self._api_key = api_key
         self._client = httpx.Client(
             base_url=self.BASE_URL,
+            follow_redirects=True,
+            max_redirects=3,
             headers={
                 "X-Subscription-Token": api_key,
                 "Accept": "application/json",
+                "User-Agent": "REED/0.1 (+https://github.com/georgejieh/REED)",
             },
-            timeout=10.0,
+            timeout=15.0,
         )
 
     def search(
@@ -64,7 +67,16 @@ class BraveProvider(SearchProvider):
                     f"brave status {response.status_code}: {response.text[:200]}"
                 )
                 continue
-            payload = response.json()
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"brave returned non-JSON (status {response.status_code}): {response.text[:200]}"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError(
+                    f"brave returned non-dict payload: {type(payload).__name__}"
+                )
             break
         else:
             raise last_exc or RuntimeError("brave search failed without response")

@@ -46,7 +46,7 @@ class FirecrawlProvider(SearchProvider):
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
-            timeout=20.0,
+            timeout=60.0,
         )
 
     def search(
@@ -75,14 +75,18 @@ class FirecrawlProvider(SearchProvider):
 
         payload: dict[str, Any] = {
             "query": query,
-            "limit": min(max_results, 10),
+            "limit": min(max_results, 25),
+            "sources": [
+                {
+                    "type": "news",
+                    "tbs": tlimit_param if tlimit_param is not None else "qdr:d",
+                }
+            ],
             "scrapeOptions": {
-                "formats": ["markdown"],
+                "formats": [{"type": "markdown"}],
                 "onlyMainContent": True,
             },
         }
-        if tlimit_param is not None:
-            payload["tbs"] = tlimit_param
 
         try:
             response = self._client.post("", json=payload)
@@ -108,8 +112,15 @@ class FirecrawlProvider(SearchProvider):
                 raise RatelimitException(f"firecrawl quota: {error_msg}")
             raise RuntimeError(f"firecrawl: {error_msg}")
 
+        # Firecrawl v2 returns hits nested under the source type.
+        # With sources=[{"type": "news"}], hits are in data.web (a
+        # common key for web and news results both). Some responses
+        # also expose data.news; we try both.
+        hits = data.get("data", {}).get("web") or data.get("data", {}).get("news") or []
+        if not hits and isinstance(data.get("data"), list):
+            hits = data.get("data", [])
         results: list[SearchResult] = []
-        for hit in data.get("data", []):
+        for hit in hits:
             markdown = (hit.get("markdown") or "").strip()
             snippet = markdown[:2000] if markdown else (hit.get("description") or "").strip()
             results.append(
