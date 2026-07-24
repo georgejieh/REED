@@ -117,9 +117,11 @@ def generate_digest(
 
         tools = get_agent_tools(config)
         system_prompt = session_def.system_prompt
+        schema_block = json.dumps(session_def.output_schema, indent=2)
         user_prompt = session_def.user_prompt_template.format(
             topic=session_def.topic,
             time_window=session_def.time_window,
+            schema=schema_block,
         )
 
         agent_result = run_agent(

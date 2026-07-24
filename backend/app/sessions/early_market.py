@@ -20,9 +20,25 @@ EARLY_MARKET = SessionDef(
         "JSON matching the schema in the user message."
     ),
     user_prompt_template=(
-        "Topic: {topic}\n"
-        "Time window: {time_window}\n"
-        "Output JSON matching the digest schema."
+        "Topic: {topic}
+"
+        "Time window: {time_window}
+
+"
+        "Output a single JSON object matching this schema.
+"
+        "No prose outside the JSON. No markdown fences.
+"
+        "Do not invent URLs; use only URLs returned by the search/scrape tools.
+
+"
+        "Schema:
+"
+        "```json
+"
+        "{schema}
+"
+        "```"
     ),
     output_schema={
         "headline": "string",
