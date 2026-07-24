@@ -20,24 +20,14 @@ CLOSE = SessionDef(
         "schema in the user message."
     ),
     user_prompt_template=(
-        "Topic: {topic}
-"
-        "Time window: {time_window}
-
-"
-        "Output a single JSON object matching this schema.
-"
-        "No prose outside the JSON. No markdown fences.
-"
-        "Do not invent URLs; use only URLs returned by the search/scrape tools.
-
-"
-        "Schema:
-"
-        "```json
-"
-        "{schema}
-"
+        "Topic: {topic}\n"
+        "Time window: {time_window}\n\n"
+        "Output a single JSON object matching this schema.\n"
+        "No prose outside the JSON. No markdown fences.\n"
+        "Do not invent URLs; use only URLs returned by the search/scrape tools.\n\n"
+        "Schema:\n"
+        "```json\n"
+        "{schema}\n"
         "```"
     ),
     output_schema={
