@@ -192,7 +192,7 @@ def run_agent(
             )
             if tool.parallel_safe:
                 user_with_snapshot += (
-                    f"\n\nTool {name} returned:\n{json.dumps(observation)[:4000]}"
+                    f"\n\nTool {name} returned:\n{json.dumps(observation, default=str)[:4000]}"
                 )
         else:
             continue

@@ -115,7 +115,7 @@ def trigger_session(
                 "warning": str(exc),
             },
         )
-        store.save(digest)
+        store.write(digest)
 
     return {
         "id": digest.id,
