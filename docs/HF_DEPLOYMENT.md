@@ -58,16 +58,16 @@ git push
 
 ## 4. Configure the trigger endpoint
 
-The trigger endpoint is `POST /api/trigger/{session}`. It accepts a header `X-Trigger-Token: <REED_TRIGGER_TOKEN>`. The Space's external cron needs a way to make this call, and the Space sleeps between requests, so the cron cannot be in-process. Two options:
+The trigger endpoint is `POST /api/trigger/{session}`. It accepts a header `X-REED-Token: <REED_TRIGGER_TOKEN>`. The Space's external cron needs a way to make this call, and the Space sleeps between requests, so the cron cannot be in-process. Two options:
 
 - Run the cron on GitHub Actions, a tiny always-on machine, or a paid cron service.
 - Run the cron on the HF Hub itself if you have access to HF Jobs (not covered here).
 
-The trigger returns a 202 immediately and runs the session in the background. The Space stays awake for the duration of the session and goes back to sleep a few minutes after the response is written. A typical cron entry is:
+The trigger runs the session synchronously inside the request and returns a 200 with the new digest id and headline. The Space stays awake for the duration of the session (typically 30-90 seconds) and goes back to sleep a few minutes after the response is written. A typical cron entry is:
 
 ```cron
 # m h dom mon dow   command
-0 12 * * 1-5         curl -fsS -X POST -H "X-Trigger-Token: $REED_TRIGGER_TOKEN" https://your-space.hf.space/api/trigger/pre_market
+0 12 * * 1-5         curl -fsS -X POST -H "X-REED-Token: $REED_TRIGGER_TOKEN" https://your-space.hf.space/api/trigger/pre_market
 ```
 
 `fsS` fails the cron run on any non-2xx response, which is what you want; a silent failure here means a missed session.
@@ -76,7 +76,7 @@ The trigger returns a 202 immediately and runs the session in the background. Th
 
 Create a private Dataset repo (e.g. `your-username/reed-digests`) and set `HF_DATASET_REPO` and `HF_TOKEN`. The Dataset repo holds one JSON file per digest and an `_index.json` manifest. Writes are non-blocking from the agent's perspective: if the mirror push fails, the digest is still saved locally and the next successful push retries. Reads happen at boot, so a fresh Space restart rehydrates every past brief from the Dataset repo.
 
-The Dataset repo is private by default, which means the dashboard needs to read it with the same `HF_TOKEN` when `VITE_DATASET_BASE` points at the mirror URL. See the static demo build section in the README for the exact URL pattern.
+The Dataset repo can be private or public. If the static demo build (or any external reader) needs to read it without a token, the repo must be public; private is fine if every reader has the `HF_TOKEN`. The portfolio reader at `georgejieh.dev/reed` requires the dataset repo to be public (it has no token). The dashboard's local dev build (`npm run build:demo`) accepts either.
 
 ## 6. Build the static dashboard
 
@@ -94,7 +94,7 @@ The output is `dashboard/dist/`. Host that anywhere: the Space itself, GitHub Pa
 After the Space boots, the dashboard, and the cron are all in place:
 
 1. `curl https://your-space.hf.space/api/health` returns `{"status":"ok","service":"reed"}`.
-2. `curl -H "X-Trigger-Token: $REED_TRIGGER_TOKEN" -X POST https://your-space.hf.space/api/trigger/pre_market` returns 202 and produces a digest within a minute or two.
+2. `curl -H "X-REED-Token: $REED_TRIGGER_TOKEN" -X POST https://your-space.hf.space/api/trigger/pre_market` returns 200 with a digest id and headline. The session runs synchronously inside the request; on success the brief is already in the dataset repo when the curl returns.
 3. `curl https://your-space.hf.space/api/digests/latest` returns the new digest.
 4. The Dataset repo's `main` branch now has a `2026-07-23-pre_market.json` file and an updated `_index.json`.
 5. The static dashboard, rebuilt with `VITE_DATASET_BASE` pointing at the mirror, shows the new brief.
