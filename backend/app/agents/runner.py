@@ -23,6 +23,48 @@ from app.providers.tools import Tool
 logger = logging.getLogger(__name__)
 
 
+def _extract_json_object(text: str) -> dict | None:
+    """Extract the first balanced JSON object from `text`.
+
+    Used as a last-resort recovery when the LLM wraps JSON in
+    markdown fences or pre-amble. Returns None when no balanced
+    object is found or the parse fails.
+    """
+    if not text:
+        return None
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                import json as _json
+                try:
+                    return _json.loads(text[start:i+1])
+                except _json.JSONDecodeError:
+                    return None
+    return None
+
+
+
 @dataclass
 class AgentRunResult:
     """Outcome of one agent run."""
@@ -226,7 +268,15 @@ def run_agent(
             except (json.JSONDecodeError, Exception) as exc:
                 logger.warning("retry still not JSON: %s", exc)
                 warning = (warning or "") + " | could not parse JSON after retry"
-                parsed = None
+                # Last-resort: extract a balanced JSON object from the text.
+                # Handles markdown fences, prose preambles, and trailing
+                # commentary that Gemini-flash and similar models sometimes emit.
+                extracted = _extract_json_object(text)
+                if extracted is not None:
+                    logger.info("json_extractor recovered a payload from model output")
+                    parsed = extracted
+                else:
+                    parsed = None
 
     duration_ms = int((time.monotonic() - start) * 1000)
     return AgentRunResult(

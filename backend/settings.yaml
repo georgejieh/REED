@@ -4,7 +4,7 @@
 # Do not commit real secrets here.
 
 provider: openrouter
-model: google/gemini-2.5-flash-lite
+model: google/gemini-2.5-flash
 base_url:
 sessions:
   enabled:

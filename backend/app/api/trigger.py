@@ -91,7 +91,7 @@ def trigger_session(
         digest = Digest(
             session=session,  # type: ignore[arg-type]
             as_of=now,
-            headline=payload.get("headline", "Brief generation failed"),
+            headline="[STUB] " + payload.get("headline", "Brief generation failed"),
             executive_summary=payload.get("executive_summary", ""),
             market_snapshot={},
             market_snapshot_meta=MarketSnapshotMeta(

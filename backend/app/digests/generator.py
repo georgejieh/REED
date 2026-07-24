@@ -174,7 +174,7 @@ def generate_digest(
             warning = agent_result.warning or "agent returned no parseable JSON"
             text = (agent_result.final_text or "").strip()
             payload = {
-                "headline": text[:200] if text else "Brief generation failed",
+                "headline": ("[STUB] " + (text[:200] if text else "Brief generation failed")),
                 "executive_summary": (
                     f"REED could not generate a structured brief for {session}. "
                     f"Reason: {warning}. Run a manual trigger or check the LLM provider."
