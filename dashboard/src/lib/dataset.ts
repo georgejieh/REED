@@ -66,7 +66,28 @@ export async function listDigestsFromDataset(
   try {
     const res = await fetch(`${DATASET_BASE}/_index.json`, { signal });
     if (res.ok) {
-      const ids = (await res.json()) as string[];
+      // The store writes _index.json as an array of {id, as_of} objects
+      // (see backend/app/digests/store.py:91-103). The dashboard's
+      // older demo build cast this as string[]; that cast is wrong
+      // against the real mirror. Accept both shapes for backward
+      // compatibility with any hand-crafted mirror that pre-dates
+      // the object-array change.
+      const raw = (await res.json()) as unknown;
+      const ids: string[] = [];
+      if (Array.isArray(raw)) {
+        for (const entry of raw) {
+          if (typeof entry === 'string') {
+            ids.push(entry);
+          } else if (
+            entry !== null &&
+            typeof entry === 'object' &&
+            'id' in entry &&
+            typeof (entry as { id: unknown }).id === 'string'
+          ) {
+            ids.push((entry as { id: string }).id);
+          }
+        }
+      }
       const digests = await Promise.all(
         ids.slice(0, limit).map((id) => getDigestFromDataset(id, signal)),
       );
