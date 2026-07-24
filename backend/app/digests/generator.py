@@ -130,7 +130,7 @@ def generate_digest(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             market_snapshot=snapshot_dict,
-            max_turns=6,
+            max_turns=3,
             json_mode=True,
         )
         if agent_result.parsed_json is None:

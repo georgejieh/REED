@@ -26,6 +26,7 @@ class SearchProviderName(StrEnum):
     DDGS = "ddgs"
     BRAVE = "brave"
     TAVILY = "tavily"
+    FIRECRAWL = "firecrawl"
 
 
 class MarketDataProviderName(StrEnum):
@@ -45,8 +46,20 @@ class SessionsConfig(BaseModel):
 
 
 class SearchConfig(BaseModel):
+    """News search configuration.
+    Provider is the primary search backend. fallback_providers
+    is an ordered list of additional backends to try when the
+    primary returns a rate-limit or quota error (e.g., Firecrawl
+    monthly credits exhausted; falls through to Brave). Empty
+    list means no fall back.
+    per_session_max_calls caps search calls within one agent
+    run. The default of 5 keeps a REED session at 5-25 Firecrawl
+    credits.
+    """
     provider: SearchProviderName = SearchProviderName.DDGS
+    fallback_providers: list[str] = Field(default_factory=list)
     rate_limit_per_minute: int = 12
+    per_session_max_calls: int = 5
 
 
 class MarketDataConfig(BaseModel):
@@ -94,6 +107,7 @@ class EnvSettings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     brave_api_key: str | None = None
     tavily_api_key: str | None = None
+    firecrawl_api_key: str | None = None
     reed_trigger_token: str | None = None
     reed_settings_path: Path = Path("./settings.yaml")
     reed_data_dir: Path = Path("../data/digests")
@@ -176,6 +190,7 @@ def _collect_api_keys(env: EnvSettings) -> dict[str, str]:
         "ollama": env.ollama_api_key,
         "brave": env.brave_api_key,
         "tavily": env.tavily_api_key,
+        "firecrawl": env.firecrawl_api_key,
     }
     for name, value in mapping.items():
         if value:
