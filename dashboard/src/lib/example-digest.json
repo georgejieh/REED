@@ -1,0 +1,101 @@
+{
+  "id": null,
+  "session": "Pre-Market",
+  "as_of": "2026-07-21T08:00:00-04:00",
+  "headline": "Futures steady ahead of CPI; semis lead pre-market action",
+  "executive_summary": "S&P 500 futures are flat to slightly higher ahead of the June CPI print at 8:30 ET. Nasdaq futures outperform as semis bid on continued AI capex commentary. Treasury yields are little changed; the dollar is firmer against the yen.",
+  "market_snapshot": {
+    "S&P 500 futures": "+0.1%",
+    "Nasdaq futures": "+0.3%",
+    "Russell 2000 futures": "-0.1%",
+    "10Y yield": "4.25%",
+    "VIX": "13.8",
+    "DXY": "104.6",
+    "WTI crude": "$78.40",
+    "Gold": "$2,418"
+  },
+  "market_snapshot_meta": {
+    "source": "stooq",
+    "fetched_at": "2026-07-21T08:00:00-04:00",
+    "values_raw": {
+      "^SPX": {"value": "5287.40", "change_pct": "+0.12", "as_of": "2026-07-20 close", "delayed": true},
+      "^NDX": {"value": "19842.10", "change_pct": "+0.34", "as_of": "2026-07-20 close", "delayed": true},
+      "^RUT": {"value": "2104.55", "change_pct": "-0.08", "as_of": "2026-07-20 close", "delayed": true},
+      "10USY.B": {"value": "4.25", "change_pct": "+0.01", "as_of": "2026-07-20 close", "delayed": true},
+      "^VIX": {"value": "13.80", "change_pct": "-0.45", "as_of": "2026-07-20 close", "delayed": true},
+      "DX-Y.NYB": {"value": "104.62", "change_pct": "+0.10", "as_of": "2026-07-20 close", "delayed": true},
+      "CL.NYM": {"value": "78.40", "change_pct": "+0.32", "as_of": "2026-07-20 close", "delayed": true},
+      "GC.CMX": {"value": "2418.30", "change_pct": "+0.18", "as_of": "2026-07-20 close", "delayed": true}
+    },
+    "delayed": true
+  },
+  "stories": [
+    {
+      "tickers": ["NVDA", "AMD"],
+      "headline": "NVDA up 2% in pre-market after-hours on reported AI capex upgrade",
+      "summary": "Nvidia gained in pre-market trading following a Bloomberg report that hyperscaler customers have raised 2025 AI capex guidance by an aggregate 18%. AMD ticked higher in sympathy.",
+      "sentiment": "bullish",
+      "source_name": "Bloomberg",
+      "source_url": "https://www.bloomberg.com/news/example-1"
+    },
+    {
+      "tickers": ["AAPL"],
+      "headline": "Apple holds flat as analysts weigh iPhone 16 Pro demand signals",
+      "summary": "Apple shares were little changed after TF International's Ming-Chi Kuo said initial iPhone 16 Pro demand is tracking in line with the 15 Pro, easing concerns about a sell-the-news event.",
+      "sentiment": "neutral",
+      "source_name": "Reuters",
+      "source_url": "https://www.reuters.com/example-2"
+    },
+    {
+      "tickers": ["TSLA"],
+      "headline": "Tesla slides 1.5% as European registrations continue to decline",
+      "summary": "Tesla shares declined after JATO Dynamics reported European registrations fell 14% YoY in June, the fourth consecutive monthly decline. Analysts remain divided on the second-half outlook.",
+      "sentiment": "bearish",
+      "source_name": "Yahoo Finance",
+      "source_url": "https://finance.yahoo.com/example-3"
+    },
+    {
+      "tickers": ["XLE", "CVX"],
+      "headline": "Energy names mixed as crude holds near $78 on demand uncertainty",
+      "summary": "Energy stocks were mixed in pre-market trading with WTI crude steady near $78. Chevron gained 0.4% on an upgrade at Wells Fargo; the broader XLE ETF was flat.",
+      "sentiment": "neutral",
+      "source_name": "MarketWatch",
+      "source_url": "https://www.marketwatch.com/example-4"
+    },
+    {
+      "tickers": ["SPY"],
+      "headline": "S&P 500 futures flat ahead of June CPI print at 8:30 ET",
+      "summary": "Index futures are flat to slightly higher ahead of the Consumer Price Index release at 8:30 ET. Consensus expects core CPI at +0.2% MoM and +3.1% YoY; a surprise in either direction will drive rate-cut repricing.",
+      "sentiment": "neutral",
+      "source_name": "CNBC",
+      "source_url": "https://www.cnbc.com/example-5"
+    },
+    {
+      "tickers": ["META", "GOOGL"],
+      "headline": "FTC widens Big Tech ad-tech probe, Meta and Google in focus",
+      "summary": "The FTC has expanded its ad-tech investigation to include additional Google and Meta products, according to a Wall Street Journal report. Both stocks are little changed in pre-market trading.",
+      "sentiment": "neutral",
+      "source_name": "Wall Street Journal",
+      "source_url": "https://www.wsj.com/example-6"
+    }
+  ],
+  "themes": ["AI capex", "CPI print", "Big Tech regulation", "European auto demand"],
+  "watch_next_session": ["8:30 ET CPI release", "Earnings: SLB pre-market", "Fed minutes at 14:00 ET"],
+  "sources": [
+    {"id": 1, "name": "Bloomberg", "url": "https://www.bloomberg.com/news/example-1"},
+    {"id": 2, "name": "Reuters", "url": "https://www.reuters.com/example-2"},
+    {"id": 3, "name": "Yahoo Finance", "url": "https://finance.yahoo.com/example-3"},
+    {"id": 4, "name": "MarketWatch", "url": "https://www.marketwatch.com/example-4"},
+    {"id": 5, "name": "CNBC", "url": "https://www.cnbc.com/example-5"},
+    {"id": 6, "name": "Wall Street Journal", "url": "https://www.wsj.com/example-6"}
+  ],
+  "generation": {
+    "provider": "openrouter",
+    "model": "google/gemini-2.5-flash-lite",
+    "agent_turns": 4,
+    "tool_calls": 9,
+    "scraped_urls": 8,
+    "fallback_used": false,
+    "duration_ms": 21430
+  }
+}

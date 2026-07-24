@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 import type { Digest, SnapshotResponse } from "./types";
+import {
+  DatasetUnavailableError,
+  getDigestFromDataset,
+  getSnapshotFromDataset,
+  listDigestsFromDataset,
+} from "./dataset";
 
 /**
  * Thin typed wrapper around `fetch` for the REED read API.
@@ -51,3 +57,13 @@ export function getDigest(id: string, signal?: AbortSignal): Promise<Digest> {
 export function getSnapshot(signal?: AbortSignal): Promise<SnapshotResponse> {
   return getJson<SnapshotResponse>("/api/snapshot", signal);
 }
+
+/** Build-time flag: true when the bundle was compiled with `--mode demo`. */
+export const IS_DEMO_BUILD: boolean = import.meta.env.MODE === "demo";
+
+export {
+  DatasetUnavailableError,
+  getDigestFromDataset,
+  getSnapshotFromDataset,
+  listDigestsFromDataset,
+};

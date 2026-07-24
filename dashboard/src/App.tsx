@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { IS_DEMO_BUILD } from "./lib/api";
 import { DigestList } from "./components/DigestList";
 import { DigestReader } from "./components/DigestReader";
 import { useDigestList } from "./hooks/useDigestList";
@@ -6,8 +7,10 @@ import { useSnapshot } from "./hooks/useSnapshot";
 
 /** Top-level two-pane layout with keyboard navigation. */
 export function App() {
-  const { digests, loading, error, refresh } = useDigestList();
-  const { snapshot } = useSnapshot();
+  const { digests, loading, error, refresh } = useDigestList(20, {
+    fromDataset: IS_DEMO_BUILD,
+  });
+  const { snapshot } = useSnapshot({ fromDataset: IS_DEMO_BUILD });
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const orderedIds = useMemo(
