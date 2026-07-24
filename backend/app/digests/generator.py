@@ -75,7 +75,30 @@ def _merge_payload(
     return merged
 
 
-def _parse_payload(payload: dict, snapshot: dict[str, dict[str, str | None]]) -> dict:
+def _parse_payload(
+    payload: dict | None,
+    snapshot: dict[str, dict[str, str | None]],
+) -> dict:
+    """Validate, coerce, and merge the live market snapshot into the payload.
+
+    Returns a minimal stub digest when `payload` is None or not a
+    dict. The agent loop already emits a fallback digest when its
+    LLM call fails to produce parseable JSON, so the `None` path
+    here only protects against future refactors.
+    """
+    if not isinstance(payload, dict):
+        return {
+            "headline": "Brief generation failed",
+            "executive_summary": (
+                "REED could not generate a structured brief: "
+                "agent payload was not a JSON object."
+            ),
+            "market_snapshot": {k: v["value"] for k, v in snapshot.items()},
+            "stories": [],
+            "themes": [],
+            "watch_next_session": [],
+            "sources": [],
+        }
     return _merge_payload(payload, snapshot)
 
 
@@ -164,7 +187,6 @@ def generate_digest(
             }
         else:
             payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
-        payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
         turns = agent_result.turns
         tool_call_count = len(agent_result.tool_calls)
         scraped_url_count = sum(
