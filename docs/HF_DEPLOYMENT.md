@@ -76,7 +76,7 @@ The trigger runs the session synchronously inside the request and returns a 200 
 
 Create a private Dataset repo (e.g. `your-username/reed-digests`) and set `HF_DATASET_REPO` and `HF_TOKEN`. The Dataset repo holds one JSON file per digest and an `_index.json` manifest. Writes are non-blocking from the agent's perspective: if the mirror push fails, the digest is still saved locally and the next successful push retries. Reads happen at boot, so a fresh Space restart rehydrates every past brief from the Dataset repo.
 
-The Dataset repo can be private or public. If the static demo build (or any external reader) needs to read it without a token, the repo must be public; private is fine if every reader has the `HF_TOKEN`. The portfolio reader at `georgejieh.dev/reed` requires the dataset repo to be public (it has no token). The dashboard's local dev build (`npm run build:demo`) accepts either.
+The Dataset repo can be private or public. If the static demo build (or any external reader) needs to read it without a token, the repo must be public; private is fine if every reader has the `HF_TOKEN`. Public is required if any external reader (such as a static portfolio site) needs to read the dataset without a token. The dashboard's local dev build (`npm run build:demo`) accepts either public or private (with a token); check the build flags.
 
 ## 6. Build the static dashboard
 
