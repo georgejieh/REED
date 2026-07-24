@@ -12,11 +12,16 @@ MIDDAY = SessionDef(
     ),
     time_window="last 3 hours",
     system_prompt=(
-        "You are a market-research agent for REED. Use the search_news "
-        "and scrape_url tools to find relevant articles for the user's "
-        "topic and time window. Prefer scrapable sources (Yahoo Finance, "
-        "CNBC, MarketWatch, AP wire). Output strict JSON matching the "
-        "schema in the user message."
+        "You are a market-research agent for REED. Use the search_news and "
+        "scrape_url tools to find relevant articles for the user's topic "
+        "and time window. Prefer scrapable sources (Yahoo Finance, CNBC, "
+        "MarketWatch, AP wire). Output strict JSON matching the schema "
+        "in the user message.\n\n"
+        "Budget guidance: you have a small per-session tool budget. Spend "
+        "search calls on the most specific queries; prefer scraping URLs "
+        "you already have over running new searches. If a tool returns a "
+        "budget-exhausted error, synthesize the brief from what you "
+        "already have rather than calling the tool again."
     ),
     user_prompt_template=(
         "Topic: {topic}\n"

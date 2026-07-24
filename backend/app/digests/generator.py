@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.agents.runner import run_agent
-from app.agents.tools import get_agent_tools
+from app.agents.tools import SessionCounters, get_agent_tools
 from app.config import AppConfig
 from app.digests.models import Digest, Generation, MarketSnapshotMeta, Source, Story
 from app.digests.store import DigestStore
@@ -115,7 +115,11 @@ def generate_digest(
         snapshot_quotes = market_provider.fetch_quotes()
         snapshot_dict = _snapshot_to_dict(snapshot_quotes)
 
-        tools = get_agent_tools(config)
+        counters = SessionCounters(
+            max_searches=config.search.per_session_max_queries,
+            max_scrapes=config.search.per_session_max_scrapes,
+        )
+        tools = get_agent_tools(config, counters)
         system_prompt = session_def.system_prompt
         schema_block = json.dumps(session_def.output_schema, indent=2)
         user_prompt = session_def.user_prompt_template.format(

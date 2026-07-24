@@ -16,7 +16,12 @@ PRE_MARKET = SessionDef(
         "scrape_url tools to find relevant articles for the user's topic "
         "and time window. Prefer scrapable sources (Yahoo Finance, CNBC, "
         "MarketWatch, AP wire). Output strict JSON matching the schema "
-        "in the user message."
+        "in the user message.\n\n"
+        "Budget guidance: you have a small per-session tool budget. Spend "
+        "search calls on the most specific queries; prefer scraping URLs "
+        "you already have over running new searches. If a tool returns a "
+        "budget-exhausted error, synthesize the brief from what you "
+        "already have rather than calling the tool again."
     ),
     user_prompt_template=(
         "Topic: {topic}\n"

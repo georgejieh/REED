@@ -105,18 +105,31 @@ def seed_search(
     *,
     provider: SearchProvider,
     max_urls: int = 10,
+    max_queries: int = 2,
     queries: Sequence[str] | None = None,
     timelimit: str = "d",
 ) -> list[str]:
     """Run the session's seed queries and return a deduped URL list.
 
     `queries` overrides the per-session default queries when supplied
-    (used by tests). `max_urls` caps the total.
+    (used by tests). `max_urls` caps the total. `max_queries` caps
+    the number of pre-flight queries per session (default 2) so
+    a single trigger does not burn the free-tier search budget
+    on routine pre-flights; the agent loop may run additional
+    searches within its own per-session cap.
     """
     chosen = list(queries) if queries else OUTLET_QUERIES.get(session, [])
     if not chosen:
         logger.warning("no seed queries for session %s", session)
         return []
+    if len(chosen) > max_queries:
+        logger.info(
+            "session %s pre-flight trimmed from %d to %d queries",
+            session,
+            len(chosen),
+            max_queries,
+        )
+        chosen = chosen[:max_queries]
 
     all_urls: list[str] = []
     for query in chosen:

@@ -59,7 +59,9 @@ class SearchConfig(BaseModel):
     provider: SearchProviderName = SearchProviderName.DDGS
     fallback_providers: list[str] = Field(default_factory=list)
     rate_limit_per_minute: int = 12
-    per_session_max_calls: int = 5
+    per_session_max_calls: int = 5  # legacy cap; superseded below
+    per_session_max_queries: int = 3  # search_news calls per session
+    per_session_max_scrapes: int = 2  # scrape_url calls per session
 
 
 class MarketDataConfig(BaseModel):

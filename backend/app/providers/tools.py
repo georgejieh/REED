@@ -1,9 +1,11 @@
 """Tool dataclass and the built-in scrape_url tool used by REED agents.
 
-The scraper uses httpx with bounded redirects and a hard timeout, then
-extracts the main article text via trafilatura. SSRF protection
-rejects loopback, link-local, and private-IP destinations. Failures
-return ScrapeResult(ok=False, error=<message>) rather than raising.
+The scraper delegates to `app.providers.scrape.scrape_article`,
+which tries Firecrawl first (when FIRECRAWL_API_KEY is set) and
+falls back to direct httpx + trafilatura. SSRF protection in
+this module rejects loopback, link-local, and private-IP
+destinations. Failures return ScrapeResult(ok=False, error=<message>)
+rather than raising.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 import httpx
-import trafilatura
 
 logger = logging.getLogger(__name__)
 
@@ -120,16 +121,20 @@ def _resolve_final_ip(url: str) -> str:
 def scrape_url(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> ScrapeResult:
     """Fetch the article text at `url` and return a populated ScrapeResult.
 
-    Network errors, 4xx/5xx, redirect loops, SSRF rejections, and
-    extraction failures all return ok=False with a descriptive error
-    rather than raising. The agent loop treats these as data.
+    Delegates to `app.providers.scrape.scrape_article`, which tries
+    Firecrawl first (when FIRECRAWL_API_KEY is set) and falls back
+    to direct httpx + trafilatura. Network errors, 4xx/5xx, SSRF
+    rejections, and extraction failures all return ok=False with a
+    descriptive error rather than raising. The agent loop treats
+    these as data.
+
+    The `timeout` parameter is accepted for backward compatibility
+    but is not used by the Firecrawl path; it applies only to the
+    httpx fall back. The `ScrapeSemaphore` still gates concurrent
+    scrapes so a single session does not hammer the network.
     """
     if not url:
         return ScrapeResult(url=url, text="", ok=False, error="empty url")
-
-    safe, reason = _is_safe_url(url)
-    if not safe:
-        return ScrapeResult(url=url, text="", ok=False, error=f"blocked: {reason}")
 
     if not _GLOBAL_SEMAPHORE.acquire():
         return ScrapeResult(
@@ -137,55 +142,8 @@ def scrape_url(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> ScrapeR
         )
 
     try:
-        try:
-            with httpx.Client(
-                follow_redirects=True,
-                max_redirects=MAX_REDIRECTS,
-                timeout=httpx.Timeout(timeout, connect=timeout, read=timeout, write=timeout),
-                headers={
-                    "User-Agent": "REED/0.1 (+https://github.com/georgejieh/REED)",
-                    "Accept": "text/html,application/xhtml+xml",
-                },
-            ) as client:
-                response = client.get(url)
-        except httpx.HTTPError as exc:
-            logger.warning("scrape http error for %s: %s", url, exc)
-            return ScrapeResult(url=url, text="", ok=False, error=f"http error: {exc}")
-
-        if response.status_code >= 400:
-            return ScrapeResult(
-                url=url,
-                text="",
-                ok=False,
-                error=f"http {response.status_code}",
-            )
-
-        content_type = response.headers.get("content-type", "")
-        if "html" not in content_type.lower() and "xml" not in content_type.lower():
-            return ScrapeResult(
-                url=url,
-                text="",
-                ok=False,
-                error=f"unsupported content-type: {content_type or 'unknown'}",
-            )
-
-        html = response.text
-        if not html:
-            return ScrapeResult(url=url, text="", ok=False, error="empty response body")
-
-        text = trafilatura.extract(
-            html,
-            include_comments=False,
-            include_tables=False,
-            favor_recall=True,
-            with_metadata=False,
-        ) or ""
-        text = text.strip()
-        if not text:
-            return ScrapeResult(
-                url=url, text="", ok=False, error="extraction returned no text"
-            )
-        return ScrapeResult(url=url, text=text, ok=True)
+        from app.providers.scrape import scrape_article
+        return scrape_article(url)
     finally:
         _GLOBAL_SEMAPHORE.release()
 

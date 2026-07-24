@@ -14,11 +14,13 @@ sessions:
     - close
     - weekend_recap
 search:
-  provider: firecrawl
+  provider: brave
   fallback_providers:
-    - brave
+    - firecrawl
   rate_limit_per_minute: 12
   per_session_max_calls: 5
+  per_session_max_queries: 3
+  per_session_max_scrapes: 2
 market_data:
   provider: stooq
 data_dir: ./data/digests

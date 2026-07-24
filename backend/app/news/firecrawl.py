@@ -133,3 +133,44 @@ class FirecrawlProvider(SearchProvider):
                 )
             )
         return results
+
+    def scrape_single(self, url: str) -> str:
+        """Scrape a single URL and return its markdown content.
+
+        Costs 1 Firecrawl credit per call. Used by the agent
+        loop when the LLM asks for full article text (the
+        `scrape_url` tool). Returns an empty string on failure
+        so the caller can fall back to the next provider.
+        """
+        try:
+            response = self._client.post(
+                "/scrape",
+                json={
+                    "url": url,
+                    "formats": [{"type": "markdown"}],
+                    "onlyMainContent": True,
+                },
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("firecrawl scrape_single request failed for %s: %s", url, exc)
+            return ""
+        if response.status_code == 429:
+            logger.warning("firecrawl scrape_single rate-limited for %s", url)
+            return ""
+        if response.status_code in (401, 403):
+            raise RuntimeError(
+                f"firecrawl auth failed ({response.status_code}): {response.text[:200]}"
+            )
+        if response.status_code != 200:
+            logger.warning(
+                "firecrawl scrape_single status %d for %s: %s",
+                response.status_code,
+                url,
+                response.text[:200],
+            )
+            return ""
+        data = response.json()
+        if not data.get("success"):
+            logger.warning("firecrawl scrape_single failed: %s", data.get("error"))
+            return ""
+        return (data.get("data", {}).get("markdown") or "").strip()
