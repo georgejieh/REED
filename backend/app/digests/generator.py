@@ -132,9 +132,32 @@ def generate_digest(
             json_mode=True,
         )
         if agent_result.parsed_json is None:
-            raise RuntimeError(
-                f"agent returned no parseable JSON: {agent_result.warning}"
+            # The LLM returned text that is not parseable JSON. Synthesize
+            # a minimal valid digest from the raw text so the trigger
+            # does not 500 and the cron does not fail closed. The brief
+            # is marked fallback_used=True and the warning is exposed in
+            # generation.warning so the operator can see it in the API.
+            logger.warning(
+                "agent returned no parseable JSON; emitting fallback digest: %s",
+                agent_result.warning,
             )
+            fallback_used = True
+            warning = agent_result.warning or "agent returned no parseable JSON"
+            text = (agent_result.final_text or "").strip()
+            payload = {
+                "headline": text[:200] if text else "Brief generation failed",
+                "executive_summary": (
+                    f"REED could not generate a structured brief for {session}. "
+                    f"Reason: {warning}. Run a manual trigger or check the LLM provider."
+                ),
+                "market_snapshot": {},
+                "stories": [],
+                "themes": [],
+                "watch_next_session": [],
+                "sources": [],
+            }
+        else:
+            payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
         payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
         turns = agent_result.turns
         tool_call_count = len(agent_result.tool_calls)

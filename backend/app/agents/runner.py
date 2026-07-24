@@ -66,15 +66,49 @@ def _build_user_prompt(user_prompt: str, snapshot: dict[str, Any] | None) -> str
 
 
 def _coerce_tool_calls(result: ProviderResult) -> list[dict[str, Any]]:
-    """Extract tool calls from a ProviderResult in a uniform shape."""
+    """Extract tool calls from a ProviderResult in a uniform shape.
+
+    Some providers return `arguments` as a JSON-encoded string rather
+    than a parsed dict. Coerce those to dicts so the run loop can
+    `**args` them into the tool callable. Strings that are not valid
+    JSON are surfaced as a single-entry unknown-tool call so the
+    model can recover on the next turn.
+    """
     out: list[dict[str, Any]] = []
     for tc in result.tool_calls:
         if isinstance(tc, dict):
-            out.append(tc)
+            args = tc.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args) if args.strip() else {}
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(
+                        "model returned non-JSON tool arguments: %r", args[:200]
+                    )
+                    out.append({
+                        "name": tc.get("name", "") or "",
+                        "arguments": {},
+                        "error": "non-JSON arguments",
+                    })
+                    continue
+            out.append({"name": tc.get("name", "") or "", "arguments": args or {}})
             continue
         name = getattr(tc, "name", None) or getattr(tc, "tool_name", None) or ""
-        args = getattr(tc, "arguments", None) or getattr(tc, "args", None) or {}
-        out.append({"name": name, "arguments": args})
+        args = getattr(tc, "arguments", None) or getattr(tc, "args", None)
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "model returned non-JSON tool arguments: %r", args[:200]
+                )
+                out.append({
+                    "name": name,
+                    "arguments": {},
+                    "error": "non-JSON arguments",
+                })
+                continue
+        out.append({"name": name, "arguments": args or {}})
     return out
 
 
@@ -126,6 +160,21 @@ def run_agent(
         for call in calls:
             name = call.get("name", "")
             args = call.get("arguments", {}) or {}
+            if not isinstance(args, dict):
+                logger.warning(
+                    "tool arguments are not a dict for %r: %r",
+                    name,
+                    args,
+                )
+                tool_history.append(
+                    {"name": name, "arguments": args, "error": "non-dict arguments"}
+                )
+                continue
+            if call.get("error"):
+                tool_history.append(
+                    {"name": name, "arguments": args, "error": call["error"]}
+                )
+                continue
             tool = next((t for t in tools if t.name == name), None)
             if tool is None:
                 logger.warning("model called unknown tool %r", name)
