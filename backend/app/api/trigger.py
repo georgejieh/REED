@@ -116,7 +116,7 @@ def trigger_session(
                 "scraped_urls": 0,
                 "fallback_used": True,
                 "duration_ms": 0,
-                "warning": str(exc),
+                "warning": f"{type(exc).__name__}: {exc}"[:500],
             },
         )
         store.write(digest)
