@@ -92,6 +92,14 @@ def trigger_session(
                 "watch_next_session": [],
                 "sources": [],
             }
+        # Overlay the real exception onto whatever payload we ended up with,
+        # so the operator can see what failed in the dataset repo.
+        payload["headline"] = f"[{type(exc).__name__}] {exc!s}"[:200]
+        payload["executive_summary"] = (
+            f"REED could not generate a structured brief for {session}. "
+            f"Exception: {type(exc).__name__}: {exc!s}. "
+            f"The next scheduled trigger will retry."
+        )
         now = datetime.now(timezone.utc)
         digest = Digest(
             session=session,  # type: ignore[arg-type]
