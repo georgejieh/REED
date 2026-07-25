@@ -65,6 +65,10 @@ def trigger_session(
         # original exception in the headline so the operator can see
         # what failed.
         logger.exception("generate_digest failed in trigger; saving stub")
+        # Surface the exception class and message to stderr for live debugging.
+        import traceback
+        print(f"TRIGGER_FAIL: {type(exc).__name__}: {exc}", flush=True)
+        print(f"TRIGGER_FAIL_TRACEBACK:\n{traceback.format_exc()}", flush=True)
         from app.digests.generator import make_stub_provider_result
         from app.digests.models import (
             Digest,
