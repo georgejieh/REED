@@ -140,8 +140,13 @@ def generate_digest(
         snapshot_quotes = market_provider.fetch_quotes()
         snapshot_dict = _snapshot_to_dict(snapshot_quotes)
 
-        # Pre-flight RSS: fetch curated headlines for this session.
-        headlines = fetch_headlines(session_def.name, per_session_cap=25)
+        # Pre-flight RSS: fetch curated headlines for this session, filtered
+        # by the session's time_window (e.g. "last 12 hours").
+        headlines = fetch_headlines(
+            session_def.name,
+            time_window=session_def.time_window,
+            per_session_cap=25,
+        )
         headlines_block = render_for_prompt(headlines)
 
         counters = SessionCounters(

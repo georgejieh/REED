@@ -19,8 +19,9 @@ PRE_MARKET = SessionDef(
     user_prompt_template=(
         "Topic: {topic}\n"
         "Time window: {time_window}\n\n"
-        "Pre-fetched headlines (use only these URLs; do not invent any):\n"
+        "Pre-fetched headlines within the time window (use only these URLs; do not invent any):\n"
         "{headlines}\n\n"
+        "Disregard any headline whose publication date is older than {time_window}.\n\n"
         "Output a single JSON object matching this schema.\n"
         "No prose outside the JSON. No markdown fences. No commentary inside the JSON.\n"
         "The first character of your response must be {{ and the last must be }}.\n\n"

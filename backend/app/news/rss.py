@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import feedparser
@@ -171,9 +171,15 @@ async def _fetch_all_async(feeds: list[tuple[str, str]]) -> list[Headline]:
     return out
 
 
-def fetch_headlines(session: str, *, per_session_cap: int = 25) -> list[Headline]:
+def fetch_headlines(
+    session: str,
+    *,
+    time_window: str | None = None,
+    per_session_cap: int = 25,
+) -> list[Headline]:
     """Synchronous entry point. Fetches all configured feeds for `session`,
-    dedupes by link, caps at per_session_cap.
+    dedupes by link, optionally filters by `time_window`, and caps at
+    per_session_cap.
     """
     feeds = RSS_FEEDS.get(session, [])
     if not feeds:
@@ -191,7 +197,93 @@ def fetch_headlines(session: str, *, per_session_cap: int = 25) -> list[Headline
     except RuntimeError:
         # No event loop at all.
         headlines = asyncio.run(_fetch_all_async(feeds))
+    if time_window:
+        before = len(headlines)
+        headlines = filter_by_window(headlines, time_window)
+        logger.info(
+            "rss filter: kept %d of %d headlines for time_window=%r",
+            len(headlines), before, time_window,
+        )
     return headlines[:per_session_cap]
+
+
+_TIME_WINDOW_UNITS = {
+    "minute": 60,
+    "minutes": 60,
+    "hour": 3600,
+    "hours": 3600,
+    "day": 86400,
+    "days": 86400,
+    "week": 604800,
+    "weeks": 604800,
+}
+
+
+def parse_time_window(text: str) -> timedelta | None:
+    """Parse a session time_window string like "last 12 hours" or "last 90 minutes".
+
+    Returns a timedelta or None if the string is not in the expected format.
+    """
+    import re
+    if not text:
+        return None
+    m = re.match(
+        r"^\s*last\s+(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks)\s*$",
+        text.strip(),
+        re.IGNORECASE,
+    )
+    if not m:
+        return None
+    n = int(m.group(1))
+    unit = m.group(2).lower()
+    return timedelta(seconds=_TIME_WINDOW_UNITS[unit] * n)
+
+
+def _published_to_aware_dt(published_at: str) -> datetime | None:
+    """Convert a Headline.published_at string to an aware UTC datetime.
+
+    Returns None if the string is empty or unparseable. Naive timestamps
+    are assumed to be UTC (RSS feeds often omit the timezone).
+    """
+    if not published_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def filter_by_window(
+    headlines: list[Headline],
+    time_window: str,
+    *,
+    now: datetime | None = None,
+) -> list[Headline]:
+    """Return only headlines whose published_at is within `time_window`.
+
+    `now` is injectable for tests; defaults to `datetime.now(timezone.utc)`.
+    Headlines without a usable timestamp are kept (the LLM can decide).
+    """
+    delta = parse_time_window(time_window)
+    if delta is None:
+        # Unparseable window: keep everything.
+        return list(headlines)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    cutoff = now - delta
+    out: list[Headline] = []
+    for h in headlines:
+        dt = _published_to_aware_dt(h.published_at)
+        if dt is None:
+            # No usable timestamp: keep it.
+            out.append(h)
+            continue
+        if dt >= cutoff:
+            out.append(h)
+    return out
 
 
 def render_for_prompt(headlines: list[Headline]) -> str:
