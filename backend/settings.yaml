@@ -1,7 +1,7 @@
 # REED operator settings, written for the HF Space deployment.
 # The Space secrets UI provides: OPENROUTER_API_KEY, REED_TRIGGER_TOKEN,
-# HF_TOKEN, HF_DATASET_REPO, FIRECRAWL_API_KEY, and BRAVE_API_KEY.
-# Do not commit real secrets here.
+# HF_TOKEN, and HF_DATASET_REPO. Do not commit real secrets here.
+# News context is fetched from public RSS endpoints (no API keys needed).
 
 provider: openrouter
 model: google/gemini-2.5-flash
@@ -13,13 +13,7 @@ sessions:
     - midday
     - close
     - weekend_recap
-search:
-  provider: brave
-  fallback_providers:
-    - firecrawl
-  rate_limit_per_minute: 12
-  per_session_max_calls: 5
-  per_session_max_queries: 3
+tools:
   per_session_max_scrapes: 2
 market_data:
   provider: stooq

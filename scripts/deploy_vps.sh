@@ -13,7 +13,7 @@
 #   One provider key (OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY,
 #   or OLLAMA_API_KEY plus OLLAMA_HOST for Ollama).
 #   Optional: REED_TRIGGER_TOKEN, REED_STORE=mirror plus HF_DATASET_REPO
-#   and HF_TOKEN, REED_SEARCH_PROVIDER plus the matching search key.
+#   and HF_TOKEN. RSS feeds provide the news context; no additional key is needed.
 #
 # The script does not write any of these to disk. They live in
 # /etc/reed/reed.env with mode 0600 and are read by `docker compose

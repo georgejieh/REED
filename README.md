@@ -5,10 +5,10 @@ Real-time Equity and Economic Digest.
 REED is a self-hosted AI agent that researches US market news on a fixed
 schedule and publishes structured briefs to a terminal-style dashboard.
 It runs a small research loop several times a trading day. Before the
-open, through the session, and after the close. It searches the web for
-what actually moved, reads the sources, and writes a concise digest with
-sentiment, tickers, and citations. You bring your own LLM key. REED stays
-out of the way.
+open, through the session, and after the close. A curated RSS pre-flight
+provides fresh headlines, the agent reads selected articles when needed,
+and writes a concise digest with sentiment, tickers, and citations. You
+bring your own LLM key. REED stays out of the way.
 
 ## Why I built it
 
@@ -25,11 +25,12 @@ back.
 
 Each scheduled session runs the same shape:
 
-1. **Seed.** A small search seeds the agent with a few anchor stories for
-   the session's time window.
-2. **Research.** The agent uses a web-search tool and a page-scraper tool
-   to find and read the articles that matter, deciding for itself what
-   is relevant rather than following a fixed keyword list.
+1. **RSS pre-flight.** Curated public feeds are fetched for the session's
+   time window. Headlines are deduplicated and injected into the agent
+   context before the model runs.
+2. **Research.** The agent uses the pre-fetched headlines and a bounded
+   page-scraper tool to read the articles that matter, deciding for itself
+   what is relevant rather than following a fixed keyword list.
 3. **Ground.** Live index, Treasury, and volatility numbers are fetched
    from a market-data source before the model runs, so the snapshot
    figures come from real data, not the model's memory.
@@ -59,13 +60,13 @@ for:
 There is no default provider and no default model. A first-run setup
 wizard detects which keys you have and lets you pick.
 
-## Web search, your choice
+## News pre-flight
 
-News discovery is pluggable the same way models are:
-
-- **DuckDuckGo** (default). Keyless, no signup.
-- **Brave Search** and **Tavily**. Free tiers, more reliable for
-  unattended, always-on deployments.
+News discovery uses a curated set of public RSS feeds. REED fetches and
+deduplicates headlines for each session before the agent runs, so normal
+sessions require no news-search API key or search tool. The model can use
+the bounded scraper for selected articles, with the per-session budget set
+by `tools.per_session_max_scrapes`.
 
 ## Schedule
 
@@ -116,18 +117,10 @@ Recognized provider keys:
 | Ollama              | `OLLAMA_HOST` (local) plus `OLLAMA_API_KEY` for cloud |
 | OpenAI-compatible   | any `base_url` plus `api_key` you configure in settings |
 
-Optional search backends: `ddgs` (default, keyless), `BRAVE_API_KEY`,
-`TAVILY_API_KEY`. Optional storage mode: `REED_STORE=mirror` plus
-`HF_DATASET_REPO` and `HF_TOKEN` for Hugging Face Spaces.
-
-### Search providers
-
-Set `search.provider` to one of `ddgs`, `brave`, or `tavily` in
-`backend/settings.yaml`:
-
-- `ddgs`: DuckDuckGo, keyless.
-- `brave`: Brave Search API, requires `BRAVE_API_KEY`.
-- `tavily`: Tavily API, requires `TAVILY_API_KEY`.
+Optional storage mode: `REED_STORE=mirror` plus `HF_DATASET_REPO` and
+`HF_TOKEN` for Hugging Face Spaces. `FIRECRAWL_API_KEY` is optional for
+article scraping; RSS feeds remain the news pre-flight and require no
+news-provider credentials.
 
 Sessions are defined in `backend/app/sessions/`. Built-in sessions:
 
@@ -179,11 +172,12 @@ pattern.
 ## Roadmap
 
 The first release targets the full pipeline described above: the five
-provider classes, pluggable search, the agentic research loop, grounded
-market snapshots, the scheduler with holiday handling, the read API, the
-dashboard, and local plus Hugging Face deployment. Paid data feeds,
-real-time (non-delayed) quotes, and any watchlist or personalization
-features are deliberately out of scope for the first version.
+provider classes, the RSS pre-flight, the bounded article scraper, the
+agentic research loop, grounded market snapshots, the scheduler with
+holiday handling, the read API, the dashboard, and local plus Hugging Face
+deployment. Paid data feeds, real-time (non-delayed) quotes, and any
+watchlist or personalization features are deliberately out of scope for
+the first version.
 
 ## Architecture reference
 

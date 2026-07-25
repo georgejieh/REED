@@ -20,10 +20,9 @@ from app.config import (
     MarketDataConfig,
     ProviderName,
     SchedulerConfig,
-    SearchConfig,
-    SearchProviderName,
     SessionsConfig,
     SettingsYaml,
+    ToolsConfig,
     TriggerConfig,
 )
 
@@ -138,7 +137,7 @@ def write_settings(
         model=model,
         base_url=base_url,
         sessions=SessionsConfig(),
-        search=SearchConfig(provider=SearchProviderName.DDGS, rate_limit_per_minute=12),
+        tools=ToolsConfig(),
         market_data=MarketDataConfig(),
         data_dir=Path("./data/digests"),
         scheduler=SchedulerConfig(),

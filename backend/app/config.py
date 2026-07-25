@@ -22,13 +22,6 @@ class ProviderName(StrEnum):
     OPENAI_COMPATIBLE = "openai_compatible"
 
 
-class SearchProviderName(StrEnum):
-    DDGS = "ddgs"
-    BRAVE = "brave"
-    TAVILY = "tavily"
-    FIRECRAWL = "firecrawl"
-
-
 class MarketDataProviderName(StrEnum):
     STOOQ = "stooq"
 
@@ -45,23 +38,15 @@ class SessionsConfig(BaseModel):
     )
 
 
-class SearchConfig(BaseModel):
-    """News search configuration.
-    Provider is the primary search backend. fallback_providers
-    is an ordered list of additional backends to try when the
-    primary returns a rate-limit or quota error (e.g., Firecrawl
-    monthly credits exhausted; falls through to Brave). Empty
-    list means no fall back.
-    per_session_max_calls caps search calls within one agent
-    run. The default of 5 keeps a REED session at 5-25 Firecrawl
-    credits.
+class ToolsConfig(BaseModel):
+    """Agent-loop tool-call budget.
+
+    scrape_url is the only tool exposed to the LLM after the
+    RSS pre-flight was introduced. The per-session cap keeps
+    Firecrawl scrape credits bounded.
     """
-    provider: SearchProviderName = SearchProviderName.DDGS
-    fallback_providers: list[str] = Field(default_factory=list)
-    rate_limit_per_minute: int = 12
-    per_session_max_calls: int = 5  # legacy cap; superseded below
-    per_session_max_queries: int = 3  # search_news calls per session
-    per_session_max_scrapes: int = 2  # scrape_url calls per session
+
+    per_session_max_scrapes: int = 2
 
 
 class MarketDataConfig(BaseModel):
@@ -85,7 +70,7 @@ class SettingsYaml(BaseModel):
     model: str | None = None
     base_url: str | None = None
     sessions: SessionsConfig = Field(default_factory=SessionsConfig)
-    search: SearchConfig = Field(default_factory=SearchConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
     market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
     data_dir: Path = Path("./data/digests")
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
@@ -107,8 +92,6 @@ class EnvSettings(BaseSettings):
     openrouter_api_key: str | None = None
     ollama_api_key: str | None = None
     ollama_host: str = "http://localhost:11434"
-    brave_api_key: str | None = None
-    tavily_api_key: str | None = None
     firecrawl_api_key: str | None = None
     reed_trigger_token: str | None = None
     reed_settings_path: Path = Path("./settings.yaml")
@@ -116,7 +99,6 @@ class EnvSettings(BaseSettings):
     reed_store: Literal["local", "mirror"] = "local"
     hf_dataset_repo: str | None = None
     hf_token: str | None = None
-    reed_search_provider: str = "ddgs"
     reed_scheduler_enabled: bool = True
     reed_skip_holidays: bool = True
 
@@ -128,7 +110,7 @@ class AppConfig(BaseModel):
     model: str
     base_url: str | None = None
     sessions: SessionsConfig
-    search: SearchConfig
+    tools: ToolsConfig
     market_data: MarketDataConfig
     data_dir: Path
     scheduler: SchedulerConfig
@@ -174,7 +156,7 @@ def load_config() -> AppConfig:
         model=settings.model,
         base_url=base_url,
         sessions=settings.sessions,
-        search=settings.search,
+        tools=settings.tools,
         market_data=settings.market_data,
         data_dir=settings.data_dir,
         scheduler=settings.scheduler,
@@ -190,8 +172,6 @@ def _collect_api_keys(env: EnvSettings) -> dict[str, str]:
         "anthropic": env.anthropic_api_key,
         "openrouter": env.openrouter_api_key,
         "ollama": env.ollama_api_key,
-        "brave": env.brave_api_key,
-        "tavily": env.tavily_api_key,
         "firecrawl": env.firecrawl_api_key,
     }
     for name, value in mapping.items():

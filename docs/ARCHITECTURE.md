@@ -16,7 +16,7 @@ reed/
       config.py            pydantic-settings from .env
       scheduler.py         APScheduler AsyncIOScheduler, ET-aware
       providers/           LLM provider implementations
-      news/                search + scrape pipeline
+      news/                RSS pre-flight and bounded article scraping
       market_data/         quote providers
       agents/                tool-calling loop
       digests/               models, generator, store
@@ -53,14 +53,16 @@ The wizard detects which keys are present in `.env` and only offers the matching
 A session runs as a short agent loop:
 
 1. Market data is pre-fetched before the agent sees anything, populating `market_snapshot` and `market_snapshot_meta` so the model cannot invent numbers.
-2. A seed search returns a small starting set of URLs biased toward scrapable outlets.
-3. The agent begins with the session's system prompt and a user prompt containing the seed URLs, time window, and topic.
-4. Each turn the model may call `search_news(query)`, call `scrape_url(url)`, or emit a final answer. The runner enforces the configured rate limit and retries on rate-limit exceptions.
+2. A curated RSS pre-flight fetches and deduplicates public headlines for the session. The rendered headlines are placed in the user prompt as static context.
+3. The agent begins with the session's system prompt and a user prompt containing the headlines, time window, and topic.
+4. The model may call `scrape_url` for a small number of selected articles, or emit a final answer. The runner enforces the configured per-session scrape budget.
 5. The final answer is parsed into the digest schema. On parse failure the error is sent back and retried up to two times.
 6. A hard cap of six turns total applies. If the cap is reached without a parseable answer, the runner force-validates the best partial into a minimal digest so the dashboard never fails completely.
 7. The runner merges agent-owned fields with runner-owned fields, validates the full Pydantic schema, and writes the digest to the store.
 
-For Ollama models without tool support, the runner uses a deterministic two-pass fallback: ask for a JSON plan of searches and URLs, execute the tools, then ask again with `json_mode=True` for the final digest.
+For Ollama models without tool support, the runner uses a deterministic
+fallback that requests structured JSON and then asks again with
+`json_mode=True` for the final digest.
 
 ## 5. Digest data shape
 
@@ -102,7 +104,7 @@ The backend exposes a small read API:
 | GET | `/api/digests/latest` | latest digest; optional `?session=` filter |
 | GET | `/api/digests/{id}` | single digest by ID |
 | GET | `/api/digests/{id}/snapshot` | snapshot at generation time |
-| POST | `/api/trigger/{session}` | run a session now; requires `X-Trigger-Token` |
+| POST | `/api/trigger/{session}` | run a session now; requires `X-REED-Token` |
 
 Read endpoints need no authentication. The trigger endpoint exists so an external cron can wake a sleeping Space by posting to it. It is disabled unless `REED_TRIGGER_TOKEN` is set.
 
@@ -132,8 +134,8 @@ Three deployment targets are supported:
 
 | File | Purpose |
 |------|---------|
-| `.env` / `backend/.env` | provider keys, trigger token, optional search/storage flags |
-| `backend/settings.yaml` | wizard-written: provider, model, sessions, search backend, data dir |
+| `.env` / `backend/.env` | provider keys, trigger token, and optional storage flags |
+| `backend/settings.yaml` | wizard-written: provider, model, sessions, tool budget, data dir |
 
 Recognized environment variables:
 
@@ -143,12 +145,10 @@ Recognized environment variables:
 | `ANTHROPIC_API_KEY` | Anthropic provider |
 | `OPENROUTER_API_KEY` | OpenRouter provider |
 | `OLLAMA_HOST` / `OLLAMA_API_KEY` | Ollama local or cloud |
-| `BRAVE_API_KEY` | Brave Search |
-| `TAVILY_API_KEY` | Tavily Search |
 | `REED_TRIGGER_TOKEN` | enables `POST /api/trigger/{session}` |
 | `REED_STORE` | `local` or `mirror` |
-| `REED_SEARCH_PROVIDER` | `ddgs`, `brave`, `tavily` |
+| `HF_DATASET_REPO` / `HF_TOKEN` | Dataset mirror credentials |
 
 ## 11. CLI wizard behavior
 
-`python backend/cli_setup.py` detects which provider keys are present, lists only the matching providers, asks the operator to pick a provider and model, prompts for any provider-specific fields, and writes `backend/settings.yaml`. Re-running the wizard overwrites the file cleanly. If no provider keys are present the wizard exits with a message pointing at `.env.example`.
+The wizard detects which provider keys are present, lists only the matching providers, asks the operator to pick a provider and model, prompts for any provider-specific fields, and writes `backend/settings.yaml`. News feeds are configured in code by session and do not require a search-provider selection. Re-running the wizard overwrites the file cleanly. If no provider keys are present the wizard exits with a message pointing at `.env.example`.

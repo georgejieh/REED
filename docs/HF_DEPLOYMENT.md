@@ -33,11 +33,12 @@ In the Space's Settings page, set the following environment variables. Do not co
 | `REED_STORE` | yes | set to `mirror` |
 | `HF_DATASET_REPO` | yes when `REED_STORE=mirror` | e.g. `your-username/reed-digests` |
 | `HF_TOKEN` | yes when `REED_STORE=mirror` | write token for the Dataset repo |
-| `REED_SEARCH_PROVIDER` | optional | `ddgs` (default), `brave`, or `tavily` |
-| `BRAVE_API_KEY` | if search=brave | search key |
-| `TAVILY_API_KEY` | if search=tavily | search key |
+| `FIRECRAWL_API_KEY` | optional | article scraping acceleration; RSS remains the news pre-flight |
 
-REED detects which provider keys are present and lets only the matching providers through the API. The trigger endpoint is disabled until `REED_TRIGGER_TOKEN` is set, so an unset token is a safe default.
+REED does not require a news-search provider or news API key. The backend
+fetches a curated RSS pre-flight for each session. The model can use the
+bounded `scrape_url` tool for selected articles, with the budget controlled
+by `tools.per_session_max_scrapes` in `settings.yaml`.
 
 ## 3. Ship `settings.yaml`
 

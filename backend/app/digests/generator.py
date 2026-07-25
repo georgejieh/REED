@@ -1,9 +1,10 @@
 """Digest generator.
 
 Orchestrates the full pipeline for one session: lookup the SessionDef,
-fetch a market snapshot, run the agent loop with the session's prompt
-templates, parse the agent's JSON output into a Digest, and persist
-the digest via the configured DigestStore.
+fetch a market snapshot, fetch a pre-flight set of RSS headlines,
+run the agent loop with the session's prompt templates, parse the
+agent's JSON output into a Digest, and persist the digest via the
+configured DigestStore.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.digests.models import Digest, Generation, MarketSnapshotMeta, Source, S
 from app.digests.store import DigestStore
 from app.market_data.factory import get_market_data_provider
 from app.market_data.base import Quote
+from app.news.rss import fetch_headlines, render_for_prompt
 from app.providers.base import LLMProvider, ProviderResult
 from app.sessions.registry import all_sessions
 
@@ -138,17 +140,23 @@ def generate_digest(
         snapshot_quotes = market_provider.fetch_quotes()
         snapshot_dict = _snapshot_to_dict(snapshot_quotes)
 
+        # Pre-flight RSS: fetch curated headlines for this session.
+        headlines = fetch_headlines(session_def.name, per_session_cap=25)
+        headlines_block = render_for_prompt(headlines)
+
         counters = SessionCounters(
-            max_searches=config.search.per_session_max_queries,
-            max_scrapes=config.search.per_session_max_scrapes,
+            max_scrapes=config.tools.per_session_max_scrapes,
         )
         tools = get_agent_tools(config, counters)
-        system_prompt = session_def.system_prompt
+        system_prompt = session_def.system_prompt.format(
+            per_session_max_scrapes=config.tools.per_session_max_scrapes,
+        )
         schema_block = json.dumps(session_def.output_schema, indent=2)
         user_prompt = session_def.user_prompt_template.format(
             topic=session_def.topic,
             time_window=session_def.time_window,
             schema=schema_block,
+            headlines=headlines_block,
         )
 
         agent_result = run_agent(
@@ -157,7 +165,7 @@ def generate_digest(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             market_snapshot=snapshot_dict,
-            max_turns=3,
+            max_turns=1,
             json_mode=True,
         )
         if agent_result.parsed_json is None:

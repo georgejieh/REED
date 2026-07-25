@@ -1,0 +1,215 @@
+"""RSS news pre-flight for REED.
+
+Fetches public RSS feeds for the named session, parses with feedparser,
+dedupes, and returns a flat list of headlines. The agent loop uses
+this list as the primary context for brief generation; no external
+search API is involved.
+
+Cost: zero. The HTTP requests go directly to public RSS endpoints.
+No API keys, no rate limits beyond what each publisher imposes on
+RSS (typically generous).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
+
+import feedparser
+import httpx
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Headline:
+    outlet: str
+    title: str
+    link: str
+    published_at: str  # ISO 8601; may be empty if the feed omits it
+    summary: str
+
+
+# Per-session feed lists. Each session uses a curated subset.
+RSS_FEEDS = {
+    "pre_market": [
+        ("MarketWatch Top Stories", "https://feeds.marketwatch.com/marketwatch/topstories/"),
+        ("MarketWatch Real-time", "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/"),
+        ("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+        ("CNBC Markets", "https://www.cnbc.com/id/20910258/device/rss/rss.html"),
+        ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+    ],
+    "early_market": [
+        ("MarketWatch Real-time", "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/"),
+        ("CNBC Markets", "https://www.cnbc.com/id/20910258/device/rss/rss.html"),
+        ("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+        ("Seeking Alpha", "https://seekingalpha.com/feed.xml"),
+        ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+    ],
+    "midday": [
+        ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+        ("MarketWatch Top Stories", "https://feeds.marketwatch.com/marketwatch/topstories/"),
+        ("CNBC Markets", "https://www.cnbc.com/id/20910258/device/rss/rss.html"),
+        ("Seeking Alpha", "https://seekingalpha.com/feed.xml"),
+        ("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ],
+    "close": [
+        ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+        ("MarketWatch Top Stories", "https://feeds.marketwatch.com/marketwatch/topstories/"),
+        ("MarketWatch Real-time", "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/"),
+        ("CNBC Markets", "https://www.cnbc.com/id/20910258/device/rss/rss.html"),
+        ("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ],
+    "weekend_recap": [
+        ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+        ("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+        ("MarketWatch Top Stories", "https://feeds.marketwatch.com/marketwatch/topstories/"),
+        ("FT Home", "https://www.ft.com/rss/home"),
+        ("Seeking Alpha", "https://seekingalpha.com/feed.xml"),
+    ],
+}
+
+
+MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB cap per feed
+REQUEST_TIMEOUT = 8.0  # seconds per feed
+MAX_CONCURRENT = 4  # bounded concurrency across feeds
+
+
+async def _fetch_one(client: httpx.AsyncClient, outlet: str, url: str) -> list[Headline]:
+    try:
+        response = await client.get(
+            url,
+            headers={
+                "User-Agent": "REED/0.1 (+https://github.com/georgejieh/REED)",
+                "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
+            },
+            timeout=REQUEST_TIMEOUT,
+            follow_redirects=True,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("rss fetch failed for %s (%s): %s", outlet, url, exc)
+        return []
+    if response.status_code >= 400:
+        logger.warning("rss status %d for %s (%s)", response.status_code, outlet, url)
+        return []
+    # Verify content-type is XML-flavored.
+    ct = (response.headers.get("content-type") or "").lower()
+    if "xml" not in ct and not response.text.lstrip().startswith(("<?xml", "<rss", "<feed", "<rdf")):
+        logger.warning("rss non-xml body for %s (%s): content-type=%s", outlet, url, ct)
+        return []
+    parsed = feedparser.parse(response.content)
+    if parsed.bozo and not parsed.entries:
+        logger.warning("rss bozo for %s (%s): %s", outlet, url, parsed.bozo_exception)
+        return []
+    out: list[Headline] = []
+    for entry in parsed.entries[:15]:  # cap per outlet
+        title = (entry.get("title") or "").strip()
+        link = (entry.get("link") or "").strip()
+        if not title or not link:
+            continue
+        # Sanitize summary: strip HTML, collapse whitespace, cap length.
+        raw_summary = (entry.get("summary") or entry.get("description") or "").strip()
+        if raw_summary:
+            soup = BeautifulSoup(raw_summary, "html.parser")
+            summary = soup.get_text(" ", strip=True)
+            summary = " ".join(summary.split())  # collapse whitespace
+        else:
+            summary = ""
+        if len(summary) > 400:
+            summary = summary[:397] + "..."
+        out.append(
+            Headline(
+                outlet=outlet,
+                title=title,
+                link=link,
+                published_at=_parse_published(entry),
+                summary=summary,
+            )
+        )
+    return out
+
+
+def _parse_published(entry: Any) -> str:
+    raw = entry.get("published_parsed") or entry.get("updated_parsed")
+    if raw:
+        try:
+            return datetime(*raw[:6], tzinfo=timezone.utc).isoformat()
+        except (TypeError, ValueError):
+            pass
+    raw = entry.get("published") or entry.get("updated")
+    return str(raw) if raw else ""
+
+
+async def _fetch_all_async(feeds: list[tuple[str, str]]) -> list[Headline]:
+    sem = asyncio.Semaphore(MAX_CONCURRENT)
+    async with httpx.AsyncClient(
+        timeout=REQUEST_TIMEOUT,
+        follow_redirects=True,
+    ) as client:
+        async def one(outlet: str, url: str) -> list[Headline]:
+            async with sem:
+                return await _fetch_one(client, outlet, url)
+        results = await asyncio.gather(
+            *(one(outlet, url) for outlet, url in feeds),
+            return_exceptions=True,
+        )
+    out: list[Headline] = []
+    seen: set[str] = set()
+    for r in results:
+        if isinstance(r, BaseException):
+            logger.warning("rss fetch raised: %s", r)
+            continue
+        for h in r:
+            if h.link in seen:
+                continue
+            seen.add(h.link)
+            out.append(h)
+    return out
+
+
+def fetch_headlines(session: str, *, per_session_cap: int = 25) -> list[Headline]:
+    """Synchronous entry point. Fetches all configured feeds for `session`,
+    dedupes by link, caps at per_session_cap.
+    """
+    feeds = RSS_FEEDS.get(session, [])
+    if not feeds:
+        logger.warning("no rss feeds configured for session %s", session)
+        return []
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # In an async context, we should not block. Use a fresh thread.
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                headlines = pool.submit(asyncio.run, _fetch_all_async(feeds)).result()
+        else:
+            headlines = asyncio.run(_fetch_all_async(feeds))
+    except RuntimeError:
+        # No event loop at all.
+        headlines = asyncio.run(_fetch_all_async(feeds))
+    return headlines[:per_session_cap]
+
+
+def render_for_prompt(headlines: list[Headline]) -> str:
+    """Render the headlines list as plain text for the LLM user prompt.
+
+    Format is compact and token-efficient. Each headline gets:
+    outlet, published_at, title, link, summary (truncated).
+    """
+    if not headlines:
+        return "(no headlines available from rss feeds)"
+    lines: list[str] = []
+    for i, h in enumerate(headlines, 1):
+        parts: list[str] = [f"[{i}]", h.outlet]
+        if h.published_at:
+            parts.append(h.published_at)
+        parts.append(f"title: {h.title}")
+        if h.summary:
+            parts.append(f"summary: {h.summary}")
+        parts.append(f"link: {h.link}")
+        lines.append(" | ".join(parts))
+    return "\n".join(lines)
