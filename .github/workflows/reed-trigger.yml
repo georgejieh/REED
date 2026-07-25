@@ -1,0 +1,62 @@
+name: REED trigger
+
+on:
+  schedule:
+    # pre_market 08:00 ET (12:00 UTC) Mon-Fri
+    - cron: "0 12 * * 1-5"
+    # early_market 09:30 ET (13:30 UTC) Mon-Fri
+    - cron: "30 13 * * 1-5"
+    # midday 13:30 ET (17:30 UTC) Mon-Fri
+    - cron: "30 17 * * 1-5"
+    # close 16:15 ET (20:15 UTC) Mon-Fri
+    - cron: "15 20 * * 1-5"
+    # weekend_recap 07:30 ET (11:30 UTC) Monday only
+    - cron: "30 11 * * 1"
+  workflow_dispatch:
+    inputs:
+      session:
+        description: "Session to trigger"
+        required: true
+        type: choice
+        options:
+          - pre_market
+          - early_market
+          - midday
+          - close
+          - weekend_recap
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger REED session
+        env:
+          REED_TOKEN: ${{ secrets.REED_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.session }}" ]; then
+            SESSION="${{ inputs.session }}"
+          else
+            # Cron run: infer session from current UTC time
+            # Each cron fires within a known 1-hour window. Map the current
+            # UTC hour to the session scheduled for that window.
+            HOUR=$(date -u +%-H)
+            MIN=$(date -u +%-M)
+            # Use hour ranges that don't overlap. Adjust if DST shifts the
+            # windows (cron expressions above are in standard EST, so for
+            # ~Nov-Mar EDT shifts +1h, the windows below shift too).
+            case "$HOUR" in
+              12) SESSION="pre_market" ;;
+              13) SESSION="early_market" ;;
+              17) SESSION="midday" ;;
+              20) SESSION="close" ;;
+              11) SESSION="weekend_recap" ;;
+              *) SESSION="unknown" ;;
+            esac
+          fi
+          echo "Triggering session: $SESSION at $(date -u)"
+          curl -sS -X POST \
+            -H "X-REED-Token: ${REED_TOKEN}" \
+            --max-time 180 --retry 3 --retry-delay 20 --retry-all-errors \
+            -w "\nHTTP:%{http_code}\n" \
+            "https://coldashsage-reed.hf.space/api/trigger/${SESSION}"
