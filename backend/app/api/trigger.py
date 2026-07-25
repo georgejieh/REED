@@ -81,10 +81,11 @@ def trigger_session(
             payload = json.loads(stub.text)
         except Exception:
             payload = {
-                "headline": f"REED session failed: {exc!s}"[:200],
+                "headline": f"[{type(exc).__name__}] {exc!s}"[:200],
                 "executive_summary": (
                     f"REED could not generate a structured brief for {session}. "
-                    f"Reason: {exc!s}. The next scheduled trigger will retry."
+                    f"Exception: {type(exc).__name__}: {exc!s}. "
+                    f"The next scheduled trigger will retry."
                 ),
                 "stories": [],
                 "themes": [],
