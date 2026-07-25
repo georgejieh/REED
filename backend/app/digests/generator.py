@@ -165,7 +165,7 @@ def generate_digest(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             market_snapshot=snapshot_dict,
-            max_turns=1,
+            max_turns=3,
             json_mode=True,
         )
         if agent_result.parsed_json is None:
@@ -202,8 +202,8 @@ def generate_digest(
             for tc in agent_result.tool_calls
             if tc.get("name") == "scrape_url"
         )
-        fallback_used = agent_result.fallback_used
-        warning = agent_result.warning
+        fallback_used = fallback_used or agent_result.fallback_used
+        warning = warning or agent_result.warning
         duration_ms = agent_result.duration_ms
 
     as_of = datetime.now(timezone.utc)
