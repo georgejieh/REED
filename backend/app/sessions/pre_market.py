@@ -12,13 +12,9 @@ PRE_MARKET = SessionDef(
     ),
     time_window="last 12 hours",
     system_prompt=(
-        "You are a market-research agent for REED. The headlines are pre-fetched and "
-        "appear in your context. Use the scrape_url tool to read the full text of a "
-        "specific article when the headline alone is not enough; otherwise, synthesize "
-        "the brief from the headlines.\n\n"
-        "Budget guidance: you have at most {per_session_max_scrapes} scrape_url calls "
-        "per session. Spend them on the most decision-relevant articles. If you have "
-        "no scrape budget left, synthesize from the headlines alone."
+        "You are a market-research agent for REED. The headlines below are pre-fetched "
+        "and represent the universe of relevant coverage for this session. Synthesize "
+        "a single JSON brief directly from these headlines. Do not invent URLs."
     ),
     user_prompt_template=(
         "Topic: {topic}\n"

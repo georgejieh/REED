@@ -68,25 +68,17 @@ def get_agent_tools(
 ) -> list:
     """Return the list of tools the model gets during an agent run.
 
-    If `counters` is provided, the scrape tool mutates it on each
-    call and refuses calls beyond the configured cap. Pass a fresh
-    SessionCounters per session.
-    """
-    if counters is None:
-        counters = SessionCounters(
-            max_scrapes=config.tools.per_session_max_scrapes,
-        )
+    REED's RSS pre-flight provides all the news context the LLM
+    needs to synthesize a brief. The agent loop runs with zero
+    tools exposed; the model produces the full JSON in a single
+    turn. The scrape_url tool is still available via
+    `bind_scrape_tool` for operator-driven use from the CLI, but
+    it is not exposed to the agent during a normal session.
 
-    bound_scrape = Tool(
-        name="scrape_url",
-        description=SCRAPE_TOOL.description,
-        parameters_schema=SCRAPE_TOOL.parameters_schema,
-        fn=lambda *args, _counters=counters, **kwargs: _scrape_url_bounded(
-            *args, counters=_counters, **kwargs
-        ),
-        parallel_safe=True,
-    )
-    return [bound_scrape]
+    `counters` is kept as a parameter for backward compatibility;
+    it is unused because no tools mutate it.
+    """
+    return []
 
 
 def bind_scrape_tool() -> Tool:

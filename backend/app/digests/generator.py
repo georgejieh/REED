@@ -148,9 +148,7 @@ def generate_digest(
             max_scrapes=config.tools.per_session_max_scrapes,
         )
         tools = get_agent_tools(config, counters)
-        system_prompt = session_def.system_prompt.format(
-            per_session_max_scrapes=config.tools.per_session_max_scrapes,
-        )
+        system_prompt = session_def.system_prompt
         schema_block = json.dumps(session_def.output_schema, indent=2)
         user_prompt = session_def.user_prompt_template.format(
             topic=session_def.topic,
@@ -165,7 +163,7 @@ def generate_digest(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             market_snapshot=snapshot_dict,
-            max_turns=3,
+            max_turns=1,
             json_mode=True,
         )
         if agent_result.parsed_json is None:
