@@ -193,6 +193,8 @@ def generate_digest(
             }
         else:
             payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
+            fallback_used = False
+            warning = None
         turns = agent_result.turns
         tool_call_count = len(agent_result.tool_calls)
         scraped_url_count = sum(
