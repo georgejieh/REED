@@ -67,6 +67,63 @@ def _snapshot_to_dict(quotes: dict[str, Quote]) -> dict[str, dict[str, str | Non
     return out
 
 
+def _coerce_payload(payload: dict) -> dict:
+    """Coerce null/missing fields to defaults so the Story/Source models accept them.
+
+    The LLM occasionally emits `null` for fields it cannot fill (summary,
+    sentiment). Pydantic rejects None for required strings, so we replace
+    null with sensible defaults here. Lists default to empty.
+    """
+    coerced = dict(payload)
+
+    # Story fields: coerce null/empty to defaults.
+    story_defaults = {
+        "summary": "",
+        "headline": "",
+        "tickers": [],
+        "sentiment": "neutral",
+        "source_name": "",
+        "source_url": "",
+    }
+    for s in coerced.get("stories", []) or []:
+        if not isinstance(s, dict):
+            continue
+        for k, default in story_defaults.items():
+            if s.get(k) is None:
+                s[k] = default
+        if not isinstance(s.get("tickers"), list):
+            s["tickers"] = []
+        # Drop stories with no source_url — they're useless and may be hallucinated.
+        if not s.get("source_url"):
+            logger.warning("dropping story with no source_url: %r", s.get("headline")[:80])
+
+    coerced["stories"] = [
+        s for s in coerced.get("stories", []) or []
+        if isinstance(s, dict) and s.get("source_url")
+    ]
+
+    # Source fields
+    for src in coerced.get("sources", []) or []:
+        if not isinstance(src, dict):
+            continue
+        for k in ("id", "name", "url"):
+            if src.get(k) is None:
+                src[k] = "" if k != "id" else 0
+
+    # Lists
+    for k in ("themes", "watch_next_session"):
+        v = coerced.get(k)
+        if v is None or not isinstance(v, list):
+            coerced[k] = []
+
+    # Strings
+    for k in ("headline", "executive_summary"):
+        if coerced.get(k) is None:
+            coerced[k] = ""
+
+    return coerced
+
+
 def _merge_payload(
     payload: dict,
     snapshot: dict[str, dict[str, str | None]],
@@ -101,7 +158,7 @@ def _parse_payload(
             "watch_next_session": [],
             "sources": [],
         }
-    return _merge_payload(payload, snapshot)
+    return _merge_payload(_coerce_payload(payload), snapshot)
 
 
 def generate_digest(
