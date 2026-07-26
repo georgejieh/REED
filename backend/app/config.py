@@ -39,14 +39,13 @@ class SessionsConfig(BaseModel):
 
 
 class ToolsConfig(BaseModel):
-    """Agent-loop tool-call budget.
+    """Agent-loop tool settings.
 
-    scrape_url is the only tool exposed to the LLM after the
-    RSS pre-flight was introduced. The per-session cap keeps
-    Firecrawl scrape credits bounded.
+    REED exposes no tools to the model: the RSS pre-flight is the
+    research step and the brief is produced in a single turn. This
+    model is retained as the config seam for any future tool, and so
+    that a `tools:` block in an existing settings.yaml still loads.
     """
-
-    per_session_max_scrapes: int = 2
 
 
 class MarketDataConfig(BaseModel):
@@ -92,15 +91,11 @@ class EnvSettings(BaseSettings):
     openrouter_api_key: str | None = None
     ollama_api_key: str | None = None
     ollama_host: str = "http://localhost:11434"
-    firecrawl_api_key: str | None = None
     reed_trigger_token: str | None = None
     reed_settings_path: Path = Path("./settings.yaml")
-    reed_data_dir: Path = Path("../data/digests")
     reed_store: Literal["local", "mirror"] = "local"
     hf_dataset_repo: str | None = None
     hf_token: str | None = None
-    reed_scheduler_enabled: bool = True
-    reed_skip_holidays: bool = True
 
 
 class AppConfig(BaseModel):
@@ -172,7 +167,6 @@ def _collect_api_keys(env: EnvSettings) -> dict[str, str]:
         "anthropic": env.anthropic_api_key,
         "openrouter": env.openrouter_api_key,
         "ollama": env.ollama_api_key,
-        "firecrawl": env.firecrawl_api_key,
     }
     for name, value in mapping.items():
         if value:

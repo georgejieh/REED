@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.agents.runner import run_agent
-from app.agents.tools import SessionCounters, get_agent_tools
+from app.agents.tools import get_agent_tools
 from app.config import AppConfig
 from app.digests.models import Digest, Generation, MarketSnapshotMeta, Source, Story
 from app.digests.store import DigestStore
@@ -245,10 +245,7 @@ def generate_digest(
         )
         headlines_block = render_for_prompt(headlines)
 
-        counters = SessionCounters(
-            max_scrapes=config.tools.per_session_max_scrapes,
-        )
-        tools = get_agent_tools(config, counters)
+        tools = get_agent_tools(config)
         system_prompt = session_def.system_prompt
         schema_block = json.dumps(session_def.output_schema, indent=2)
         user_prompt = session_def.user_prompt_template.format(
@@ -301,11 +298,10 @@ def generate_digest(
             warning = None
         turns = agent_result.turns
         tool_call_count = len(agent_result.tool_calls)
-        scraped_url_count = sum(
-            1
-            for tc in agent_result.tool_calls
-            if tc.get("name") == "scrape_url"
-        )
+        # No tools are exposed to the model, so this is always 0. The field is
+        # retained because every persisted digest and the public dataset
+        # history carry it, and the dashboard reads the same shape.
+        scraped_url_count = 0
         fallback_used = fallback_used or agent_result.fallback_used
         warning = warning or agent_result.warning
         duration_ms = agent_result.duration_ms

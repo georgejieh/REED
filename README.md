@@ -1,86 +1,59 @@
-# REED
+# REED — Real-time Equity and Economic Digest
 
-Real-time Equity and Economic Digest.
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
+[![Node.js](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-REED is a self-hosted, local-first market-news agent. Clone the repo,
-run the setup wizard, and you have a personal webapp that produces
-five scheduled market briefs per US-trading day, with a terminal-style
-React dashboard to read them on. Bring your own LLM key. REED runs
-on your machine, on a small VPS, or on a free Hugging Face Space if
-you want a hosted demo.
+**REED is a self-hosted market news agent that writes scheduled stock market briefs from public RSS feeds using the LLM of your choice.** Clone the repo, run the setup wizard, and you have a local webapp that produces a market brief on its own schedule and a terminal-style React dashboard to read every past brief in. It runs on your own machine, needs no financial data subscription, and works with any model you already pay for: Anthropic, OpenAI, OpenRouter, Ollama, or any OpenAI-compatible endpoint.
 
-## Why I built it
+A hosted demo of the reader is at [georgejieh.dev/reed](https://georgejieh.dev/reed). The demo is a static build of the same dashboard, so it shows what REED produces without you having to run anything.
 
-I wanted a market brief that reads like something a person would write,
-on a schedule I do not have to think about, without paying for a data
-terminal or handing my reading habits to an ad-funded feed. Most AI
-news tools either wrap a single vendor's model or lean on an RSS pile
-that goes stale the moment a feed breaks. REED is the version I
-actually wanted: an agent that goes and finds the day's stories
-itself, runs on whatever model I feel like pointing it at, and keeps
-every past brief so I can scroll back.
+---
 
-## What REED is
+## Table of Contents
 
-- A Python backend (FastAPI) that owns the LLM call, the RSS pre-flight,
-  the scheduler, and a small read API.
-- A React + Vite dashboard that reads the backend's API and renders
-  every past brief in a terminal-style layout.
-- A setup wizard that detects which provider keys you have and writes
-  `settings.yaml` for you.
-- A local cron (APScheduler) that fires five weekday sessions plus one
-  Monday-morning weekend recap. On a small box, this is the only cron
-  you need.
-- An optional HF Space deployment with an external GitHub Actions cron
-  and a static reader on GitHub Pages. The author uses this variant
-  to demo REED on `georgejieh.dev/reed`. For your own deployment,
-  the local-first path is the primary use case.
+- [Why I Built It](#why-i-built-it)
+- [How It Works](#how-it-works)
+- [The Schedule](#the-schedule)
+- [What REED Is Not](#what-reed-is-not)
+- [The Dashboard](#the-dashboard)
+- [Quick Start](#quick-start)
+- [Bring Your Own Model](#bring-your-own-model)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [What This Does Not Do](#what-this-does-not-do)
+- [Project Structure](#project-structure)
+- [License](#license)
 
-## What REED is not
+## Why I Built It
 
-- Not a multi-provider agent runtime. The wizard supports five
-  provider classes for flexibility, but the production path uses
-  OpenRouter with one model.
-- Not a multi-turn agent. The session runs as a single LLM call with
-  zero tools exposed. The pre-flight is the research.
-- Not a search-driven news pipeline. The RSS feeds are the news.
-  No Brave, no Firecrawl, no news-search API key.
-- Not a chatbot, not a prompt editor, not a watchlist service. REED
-  runs the schedule, writes the briefs, and renders them. That is it.
+I wanted a market brief that reads like a person wrote it, on a schedule I do not have to think about, without paying for a data terminal or handing my reading habits to an ad-funded feed.
 
-## How it works
+Most AI news tools fail in one of two ways. Either they wrap a single vendor's model, so your reading depends on that vendor's pricing and availability, or they hand the model a search tool and let it go find the news itself. The second approach is the one I actually tried first, and it is why REED works the way it does now. I built a version with a web crawler and a scraper, and it did not hold up: scraping was slow, frequently blocked, and inconsistent enough that the briefs could not be trusted. As a result I moved the research step off the model entirely. The feeds are fetched and filtered before the model is ever called, and the model's only job is to write.
 
-Each scheduled session runs the same shape, synchronously inside the
-trigger:
+That split is the whole design. The runner owns the parts a language model is bad at, which is timestamps, schemas, deduplication, and knowing what is actually recent. The model owns the part it is good at, which is turning thirty headlines into readable prose. Meaning when something goes wrong, the failure is almost always in code I can inspect and fix, rather than in a model's judgment I can only re-prompt and hope about.
 
-1. **RSS pre-flight.** Curated public feeds for the session's time
-   window are fetched and deduplicated. Entries without a usable
-   timestamp are dropped. Entries dated more than 15 minutes in the
-   future relative to the trigger time are dropped.
-2. **Single LLM call.** The runner calls `provider.generate` once
-   with the session system prompt and a user prompt containing the
-   headlines, time window, and topic. `tools=[]`, `max_turns=1`,
-   `json_mode=true`.
-3. **Coerce.** Stories whose `source_url` is not in the pre-fetched
-   link set are dropped. Stories with non-string or empty headlines
-   are coerced; sentiment is normalized to one of `bullish`/`bearish`/
-   `neutral`.
-4. **Validate.** The full Pydantic `Digest` schema is enforced.
-5. **Persist.** One JSON file per digest plus a rebuilt `_index.json`
-   is written to the local `data_dir` (or pushed to an HF Dataset repo
-   in `mirror` mode).
-6. **Display.** The dashboard reads the latest briefs from the local
-   API (or from the dataset repo in static-reader mode) and renders
-   them.
+## How It Works
 
-The LLM writes the prose. The runner owns the schema, the timestamps,
-the session metadata, and the market snapshot. The split keeps the
-error-prone parts off the model.
+Every scheduled session runs the same six steps, synchronously, inside one trigger.
 
-## Schedule
+1. **RSS pre-flight.** Curated public feeds for that session are fetched concurrently, capped at 15 entries per outlet and 25 per session, and deduplicated by link. Each response is checked for an XML content type and capped at 5 MB, so an oversized or wrong-typed feed cannot take the process down.
 
-Five sessions, ET, weekdays except `weekend_recap` which is Monday
-only. The local scheduler skips US market holidays automatically.
+2. **Time filter.** Entries are kept only if they fall inside the session's window, for example the last 12 hours. Entries dated more than 15 minutes in the future are dropped, because real feeds carry clock-skew and promo items. Entries with no usable timestamp are also dropped. The model has no web access and its training data predates the session, so it cannot judge whether an undated item belongs in today's brief, and an undated entry that reaches the prompt is indistinguishable from a current one.
+
+3. **One LLM call.** The runner calls the provider exactly once with `tools=[]`, `max_turns=1`, and `json_mode=true`. The session prompt carries the filtered headlines, the time window, the topic, and a live market snapshot. There is no tool loop and no second turn.
+
+4. **Coerce.** Any story whose `source_url` is not in the pre-fetched link set is dropped, which is what stops the model from inventing a plausible-looking URL. Sentiment is normalized to `bullish`, `bearish`, or `neutral`, and null or missing fields are filled with defaults.
+
+5. **Validate.** The full Pydantic `Digest` schema is enforced before anything is written.
+
+6. **Persist and display.** One JSON file per digest is written with an atomic rename, and a small `_index.json` is rebuilt on every write so a corrupted index recovers on the next run. The dashboard reads from there.
+
+The market snapshot is fetched separately from Stooq and merged into the payload by the runner rather than the model, so the numbers in a brief are numbers REED looked up, not numbers the model recalled.
+
+## The Schedule
+
+Four briefs on a normal trading day, plus a weekend recap on Monday morning, for five session types in total. Times are US/Eastern.
 
 | Session       | Time (ET) | Days    |
 |---------------|-----------|---------|
@@ -90,94 +63,34 @@ only. The local scheduler skips US market holidays automatically.
 | Market Close  | 16:15     | Mon-Fri |
 | Weekend Recap | 07:00     | Monday  |
 
-On a small box, the in-process APScheduler fires these automatically
-and the dashboard refreshes with each new brief. No external cron
-needed.
+The in-process scheduler (APScheduler) fires these automatically, and it skips days the NYSE is closed using the `exchange_calendars` XNYS calendar. On an always-on machine this is the only cron you need. The holiday check lives in a shared module used by both the scheduler and the HTTP trigger, so both firing paths behave the same way.
 
-On a Hugging Face Space, the Space sleeps between requests. The
-HF deployment uses an external cron (GitHub Actions) that POSTs to
-the Space's token-protected trigger endpoint on the same schedule.
-See `docs/HF_DEPLOYMENT.md`.
+Sessions can be backfilled. The trigger endpoint accepts an `as_of` query parameter, which anchors both the RSS time filter and the digest's own timestamp to a past date.
 
-## The dashboard
+## What REED Is Not
 
-The local dashboard is a single-page React + Vite app styled like a
-cross between an email client and a market terminal. A list of briefs
-on the left, newest first and open by default, and the full digest on
-the right: headline, summary, a market-snapshot strip, story cards
-with sentiment and ticker chips, and numbered sources. Built for
-reading, not clicking. Keyboard navigation, no settings to fiddle
-with, every past brief one arrow-key away.
+- **Not a multi-turn agent.** One call, no tools, no loop. The pre-flight is the research step.
+- **Not a search-driven pipeline.** The RSS feeds are the news. There is no search API key, no crawler, and no scraper. An earlier version had them and they were removed.
+- **Not a multi-provider runtime.** The wizard supports five provider classes so you can use what you already have, but one session uses one model.
+- **Not a chatbot, watchlist, or prompt editor.** REED runs the schedule, writes the briefs, and renders them.
+- **Not financial advice.** It summarizes public headlines. Nothing in a brief is a recommendation.
 
-The local dashboard runs at `http://localhost:5173` and proxies the
-backend at `http://localhost:8000`. The HF-hosted static demo at
-`georgejieh.dev/reed` reads the public HF Dataset repo instead.
+## The Dashboard
 
-## Architecture
+A single-page React and Vite app styled like a cross between an email client and a market terminal. Briefs are listed on the left, newest first and open by default. The full digest sits on the right: headline, executive summary, a market-snapshot strip, story cards with sentiment and ticker chips, and numbered sources. Arrow keys move between briefs. It is built for reading rather than clicking, so there are no settings to configure in the UI.
 
-REED is one repository with a clean split:
+In development it runs at `http://localhost:5173` and proxies the backend at `http://localhost:8000`.
 
-- **Backend.** FastAPI. Owns the provider abstraction, the RSS
-  pre-flight, the single-turn runner, the scheduler, and a small
-  read API.
-- **Dashboard.** React with Vite and TypeScript. Reads the backend's
-  API in dev; reads a baked sample or public dataset repo in static
-  demo mode.
-- **Setup wizard.** `backend/cli_setup.py` detects provider keys and
-  writes `backend/settings.yaml`.
+## Quick Start
 
-Digests are stored as JSON. Local and self-hosted deployments keep
-them on disk. On ephemeral hosts, REED mirrors every brief to a
-durable store and rehydrates its full history on restart, so no past
-brief is lost.
-
-## Bring your own model
-
-The wizard supports five provider classes. Pick whichever you already
-pay for:
-
-- **Anthropic** and **OpenAI** with first-party APIs.
-- **OpenRouter** with one key and hundreds of models across every
-  major lab. The production path uses `google/gemini-2.5-flash` via
-  OpenRouter.
-- **Ollama** for local models on your own machine, or Ollama Cloud.
-- **Any OpenAI-compatible endpoint**: Together, Groq, Fireworks,
-  DeepInfra, Google Gemini, Mistral, xAI, Perplexity, vLLM, LM Studio,
-  and the rest. If it speaks the OpenAI API, REED can use it.
-
-There is no default provider and no default model. The wizard
-detects which keys you have and lets you pick.
-
-## Configuration
-
-`backend/settings.yaml` is the operator-written config: provider,
-model, sessions, market data settings. The wizard writes it on first
-run. Environment variables carry secrets and deployment-mode flags.
-
-Recognized environment variables:
-
-| Variable                | Purpose                                              |
-|-------------------------|------------------------------------------------------|
-| `OPENAI_API_KEY`        | OpenAI provider                                      |
-| `ANTHROPIC_API_KEY`     | Anthropic provider                                   |
-| `OPENROUTER_API_KEY`    | OpenRouter provider                                  |
-| `OLLAMA_HOST`           | Ollama local; or `OLLAMA_API_KEY` for cloud         |
-| `REED_STORE`            | `local` (default) or `mirror` for HF Dataset        |
-| `HF_DATASET_REPO`       | dataset repo, used only when `REED_STORE=mirror`     |
-| `HF_TOKEN`              | write token for the dataset repo                     |
-| `REED_TRIGGER_TOKEN`    | enables `POST /api/trigger/{session>` (HF deployment)|
-
-The wizard writes `settings.yaml` based on what keys you have. You can
-also hand-write the file. See `cli_setup.py` for the full schema.
-
-## Quick start
+Prerequisites: Python 3.12+, Node.js 18+, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/georgejieh/REED
 cd REED/backend
 uv sync
-cp .env.example .env  # add at least one provider key
-python cli_setup.py    # picks provider, model, writes settings.yaml
+cp .env.example .env      # add at least one provider key
+python cli_setup.py       # detects your keys, picks a model, writes settings.yaml
 uv run uvicorn app.main:app --port 8000
 ```
 
@@ -189,50 +102,79 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` to see the dashboard. The backend
-scheduler fires at 08:00 ET weekdays. The dashboard shows each new
-brief as it lands.
-
-For the demo build that reads from a baked sample (no backend
-needed):
+Open `http://localhost:5173`. The scheduler starts with the backend and fires the next session on time. To see a brief immediately rather than waiting for the schedule, set `REED_TRIGGER_TOKEN` in `.env` and post to the trigger endpoint:
 
 ```bash
-cd REED/dashboard
-npm run build:demo
+curl -X POST -H "X-REED-Token: $REED_TRIGGER_TOKEN" \
+  http://localhost:8000/api/trigger/pre_market
 ```
 
-The `dist/` output is a static site. Host it anywhere. The author's
-demo at `georgejieh.dev/reed` is this build, reading from the public HF
-Dataset repo.
+## Bring Your Own Model
+
+The wizard detects which keys are present in your `.env` and only offers those providers. There is no default provider and no default model, because the right answer depends on what you already pay for.
+
+- **Anthropic** and **OpenAI** through their first-party APIs.
+- **OpenRouter**, one key for models across most major labs.
+- **Ollama**, for local models on your own hardware, or Ollama Cloud.
+- **Any OpenAI-compatible endpoint**, including Together, Groq, Fireworks, DeepInfra, Mistral, xAI, vLLM, and LM Studio. Set `base_url` and REED will use it.
+
+The hosted demo runs `google/gemini-2.5-flash` through OpenRouter. A brief is one call against roughly 25 headlines, so a cheap model is usually the right call.
+
+## Configuration
+
+`backend/settings.yaml` is the operator config and holds the provider, model, enabled sessions, data directory, and scheduler behavior. The wizard writes it, and you can hand-edit it afterwards. Secrets never go in this file.
+
+Environment variables carry secrets and deployment mode:
+
+| Variable              | Purpose                                                          |
+|-----------------------|------------------------------------------------------------------|
+| `OPENAI_API_KEY`      | OpenAI provider                                                  |
+| `ANTHROPIC_API_KEY`   | Anthropic provider                                               |
+| `OPENROUTER_API_KEY`  | OpenRouter provider                                              |
+| `OLLAMA_API_KEY`      | Ollama Cloud                                                     |
+| `OLLAMA_HOST`         | Ollama endpoint, defaults to `http://localhost:11434`            |
+| `REED_SETTINGS_PATH`  | path to `settings.yaml`, defaults to `./settings.yaml`           |
+| `REED_TRIGGER_TOKEN`  | enables `POST /api/trigger/{session}`, compared in constant time |
+| `REED_ENV`            | `prod` (default) or `dev`                                        |
+| `REED_STORE`          | `local` (default) or `mirror`                                    |
+| `HF_DATASET_REPO`     | dataset repo, used only when `REED_STORE=mirror`                 |
+| `HF_TOKEN`            | write token for that dataset repo                                |
+
+The trigger endpoint fails closed. Without `REED_TRIGGER_TOKEN` it returns 503, except when `REED_ENV=dev` on a non-hosted machine.
 
 ## Deployment
 
-The backend is built to run anywhere:
+REED is local-first. Everything below is the same backend with different assumptions about whether the machine stays awake.
 
-- **Local.** The default. `uv run uvicorn app.main:app` and
-  `npm run dev` and you are done.
-- **Small VPS.** The same containers on any always-on box. The
-  scheduler runs in-process. One box is enough.
-- **Docker compose.** `docker compose up backend dashboard` runs the
-  full stack together.
-- **Hugging Face Space.** An HF-compatible image with the in-process
-  scheduler turned off and an external cron driving the trigger
-  endpoint. The author's demo uses this. See `docs/HF_DEPLOYMENT.md`
-  for the full operator runbook.
+- **Local.** The default, and the one the project is designed around. Digests are JSON files on your disk.
+- **Small VPS.** The same thing on an always-on box. The in-process scheduler owns the schedule.
+- **Docker.** `docker compose up backend` runs the backend and mounts `settings.yaml` and the digest directory. The dashboard is run with `npm run dev`, or built and served as static files.
+- **Sleeping host, such as a free Hugging Face Space.** The in-process scheduler cannot be trusted when the host sleeps between requests, so it is turned off and an external cron posts to the trigger endpoint instead. Because the filesystem is also ephemeral there, `REED_STORE=mirror` pushes every brief to a Hugging Face Dataset repo and rehydrates the full history on restart. This is how the hosted demo runs. See [`docs/HF_DEPLOYMENT.md`](docs/HF_DEPLOYMENT.md).
 
-The dashboard has two build modes. `npm run build` reads the live API
-and is meant to be served next to the backend. `npm run build:demo`
-reads a public HF Dataset repo at build time, falls back to a baked
-sample when the dataset is unreachable, and is meant to be hosted
-statically on any CDN.
+The dashboard has two build modes. `npm run build` expects the live backend API next to it. `npm run build:demo` reads a public dataset repo at build time and falls back to a baked sample when that is unreachable, which produces a static site that can be hosted on any CDN.
 
-## Architecture reference
+## What This Does Not Do
 
-See `docs/ARCHITECTURE.md` for the full system description.
+REED summarizes public RSS headlines with a language model, and that bounds what a brief can be trusted for. It does not verify claims against a second source, so a wrong headline produces a wrong summary. Coverage is whatever the configured feeds published in the window, which means a story no feed carried will not appear. The market snapshot comes from Stooq and is delayed, which is why every digest records the source and timestamp of the numbers it used.
+
+When the model returns something unparseable, REED writes a digest marked `fallback_used` with the reason attached rather than failing silently or inventing content, so a brief that could not be produced is visible as such instead of looking like a slow news day.
+
+## Project Structure
+
+```
+backend/               FastAPI app: providers, RSS pre-flight, runner, scheduler, read API
+backend/cli_setup.py   Setup wizard, writes settings.yaml
+dashboard/             React + Vite + TypeScript reader
+data/digests/          Generated briefs (JSON, one per digest)
+docs/                  Architecture reference and deployment runbook
+.github/               Scheduled trigger workflow for the hosted demo
+```
+
+`docs/ARCHITECTURE.md` has the full system description.
 
 ## License
 
-Apache-2.0.
+Apache-2.0. See [LICENSE](LICENSE).
 
 ## Contributing
 

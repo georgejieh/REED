@@ -149,10 +149,8 @@ model:
    with agent-owned fields and validates the full Pydantic schema
    before writing.
 
-The bounded `scrape_url` tool is still exposed via
-`bind_scrape_tool()` for operator-driven CLI use, but it is not
-wired into the session agent loop. Returning `[]` from
-`get_agent_tools()` enforces that at runtime.
+No tools are exposed to the model at all. `get_agent_tools()` returns
+`[]`, which is what enforces the single-turn shape at runtime.
 
 ## 8. Digest data shape
 
@@ -239,10 +237,11 @@ the day's stories. Removing all three cut cold-trigger time from
 60-120s to 10-30s and dropped the cost from ~$0.05 per brief to
 ~$0.005.
 
-The bounded `scrape_url` tool is still in the codebase for the
-operator's CLI use. The provider abstraction is still multi-provider
-for the same reason. Everything else is on the cron path or
-removed.
+The search and scrape layers have since been deleted from the
+codebase rather than left dormant. The provider abstraction is still
+multi-provider, because that one earns its keep: it is what lets an
+operator run REED on whatever model they already pay for. Everything
+else is on the cron path or gone.
 
 ## 13. Configuration
 

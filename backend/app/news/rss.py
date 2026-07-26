@@ -289,7 +289,12 @@ def filter_by_window(
     headlines that were published AFTER the backfill date.
 
     `now` is injectable for tests; defaults to `datetime.now(timezone.utc)`.
-    Headlines without a usable timestamp are kept (the LLM can decide).
+
+    Headlines without a usable timestamp are dropped. The model has no web
+    access and its training data is older than the session window, so it
+    cannot judge whether an undated item belongs in this brief. An undated
+    entry that survives into the prompt is indistinguishable from a current
+    one, so the safe default is to drop it rather than let the model guess.
     """
     delta = parse_time_window(time_window)
     if delta is None:
@@ -300,14 +305,16 @@ def filter_by_window(
     cutoff = now - delta
     upper = now + timedelta(minutes=FUTURE_TOLERANCE_MINUTES)
     out: list[Headline] = []
+    undated = 0
     for h in headlines:
         dt = _published_to_aware_dt(h.published_at)
         if dt is None:
-            # No usable timestamp: keep it.
-            out.append(h)
+            undated += 1
             continue
         if cutoff <= dt <= upper:
             out.append(h)
+    if undated:
+        logger.info("rss filter: dropped %d headline(s) with no usable timestamp", undated)
     return out
 
 

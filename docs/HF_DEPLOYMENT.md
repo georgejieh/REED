@@ -52,8 +52,10 @@ secrets UI is the only place these values should live.
 | `REED_STORE`          | yes      | set to `mirror`                                  |
 | `HF_DATASET_REPO`     | yes      | e.g. `your-username/reed-digests`                |
 | `HF_TOKEN`            | yes      | write token for the Dataset repo                 |
-| `REED_SKIP_HOLIDAYS`  | no       | `1` (default) skips NYSE holidays               |
 | `REED_ENV`            | no       | `prod` (default) or `dev`                        |
+
+Holiday skipping is controlled by `scheduler.skip_holidays` in
+`settings.yaml`, not by an environment variable.
 
 The Space no longer requires a news-search provider or scrape tool
 on the cron path. RSS is the only news source. `OPENAI_API_KEY` and
@@ -71,8 +73,9 @@ it in the Space repo at the right path. Keep these knobs in mind:
 - `scheduler.enabled` must be `false` on a free Space. The Space
   sleeps between requests, so the in-process scheduler cannot be
   trusted to fire on time.
-- `trigger.enabled` must be `true` so the external cron can wake
-  the Space.
+- `trigger.enabled` is a documentation flag only. The trigger endpoint
+  is gated by the `REED_TRIGGER_TOKEN` secret, so setting the token is
+  what actually opens the route for the external cron.
 - `data_dir` defaults to `./data/digests`. On a free Space that path
   is ephemeral; the mirror store pushes every write to the Dataset
   repo.
@@ -177,7 +180,8 @@ restart.
 - `BRAVE_API_KEY`
 - `TAVILY_API_KEY`
 - `REED_SEARCH_PROVIDER`
-- `FIRECRAWL_API_KEY` (kept only as optional CLI scraper key)
+- `FIRECRAWL_API_KEY`
 
-The cron path uses RSS only. No news-search provider, no scrape
-tool, no agent loop.
+None of these are read by REED any more; the search and scrape code
+that used them has been removed. The cron path uses RSS only. No
+news-search provider, no scrape tool, no agent loop.

@@ -7,14 +7,7 @@ from app.providers.ollama_provider import OllamaProvider
 from app.providers.openai_compatible_provider import OpenAICompatibleProvider
 from app.providers.openai_provider import OpenAIProvider
 from app.providers.openrouter_provider import OpenRouterProvider
-from app.providers.tools import (
-    SCRAPE_TOOL,
-    ScrapeResult,
-    ScrapeSemaphore,
-    Tool,
-    get_scrape_semaphore,
-    scrape_url,
-)
+from app.providers.tools import Tool
 
 __all__ = [
     "AnthropicProvider",
@@ -24,11 +17,6 @@ __all__ = [
     "OpenAIProvider",
     "OpenRouterProvider",
     "ProviderResult",
-    "SCRAPE_TOOL",
-    "ScrapeResult",
-    "ScrapeSemaphore",
     "Tool",
     "get_provider",
-    "get_scrape_semaphore",
-    "scrape_url",
 ]

@@ -1,7 +1,15 @@
-# REED operator settings, written for the HF Space deployment.
-# The Space secrets UI provides: OPENROUTER_API_KEY, REED_TRIGGER_TOKEN,
-# HF_TOKEN, and HF_DATASET_REPO. Do not commit real secrets here.
-# News context is fetched from public RSS endpoints (no API keys needed).
+# REED operator settings.
+#
+# `python cli_setup.py` regenerates this file from the provider keys in
+# your `.env`. The values below are the local-first defaults: the
+# in-process scheduler owns the schedule and no external cron is needed.
+#
+# Secrets never belong in this file. They come from `.env` locally, or
+# from the host's secrets UI when deployed.
+#
+# Deploying to a sleeping host such as a free Hugging Face Space needs
+# `scheduler.enabled: false` plus an external cron. See
+# docs/HF_DEPLOYMENT.md.
 
 provider: openrouter
 model: google/gemini-2.5-flash
@@ -13,14 +21,12 @@ sessions:
     - midday
     - close
     - weekend_recap
-tools:
-  per_session_max_scrapes: 2
 market_data:
   provider: stooq
 data_dir: ./data/digests
 scheduler:
-  enabled: false
+  enabled: true
   timezone: US/Eastern
   skip_holidays: true
 trigger:
-  enabled: true
+  enabled: false

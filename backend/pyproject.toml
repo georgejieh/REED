@@ -9,7 +9,6 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "httpx>=0.28",
-    "trafilatura>=2.0",
     "beautifulsoup4>=4.12",
     "feedparser>=6.0,<7",
     "pyyaml>=6.0",
