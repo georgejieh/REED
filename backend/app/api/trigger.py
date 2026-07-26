@@ -55,17 +55,29 @@ def trigger_session(
         if not x_reed_token or not hmac.compare_digest(x_reed_token, expected):
             raise HTTPException(status_code=401, detail="missing or invalid token")
 
+    # Parse as_of query param if provided (backfill mode). Do this BEFORE
+    # the holiday check so the holiday gate can target the backfill date,
+    # not today.
+    parsed_as_of = None
+    if as_of:
+        try:
+            parsed_as_of = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"invalid as_of: {as_of!r}; expected ISO-8601 UTC")
+
     # Holiday skip: GHA cron path goes through this trigger, so the gate must
     # live here (not just in scheduler.py) for the HF Space deployment.
+    # For backfill (as_of provided), check the backfill date for holidays,
+    # not today.
     from datetime import datetime as _dt, timezone as _tz
     from app.market_calendar import is_us_market_holiday
-    if config.scheduler.skip_holidays and is_us_market_holiday(_dt.now(_tz.utc)):
-        now = _dt.now(_tz.utc)
+    holiday_anchor = parsed_as_of if parsed_as_of else _dt.now(_tz.utc)
+    if config.scheduler.skip_holidays and is_us_market_holiday(holiday_anchor):
         return {
             "id": None,
             "headline": "[STUB] skipped (US market holiday)",
             "session": session,
-            "as_of": now.isoformat(),
+            "as_of": holiday_anchor.isoformat(),
             "skipped": True,
         }
 
@@ -74,14 +86,6 @@ def trigger_session(
     except Exception as exc:
         logger.warning("provider init failed in trigger: %s", exc)
         raise HTTPException(status_code=503, detail=f"provider init failed: {exc}")
-
-    # Parse as_of query param if provided (backfill mode).
-    parsed_as_of = None
-    if as_of:
-        try:
-            parsed_as_of = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"invalid as_of: {as_of!r}; expected ISO-8601 UTC")
 
     try:
         digest = generate_digest(
