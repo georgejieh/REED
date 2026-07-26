@@ -101,7 +101,7 @@ def _scrape_with_httpx(url: str) -> str:
                 write=DEFAULT_TIMEOUT_SECONDS,
             ),
             headers={
-                "User-Agent": "REED/0.1 (+https://github.com/georgejieh/REED)",
+                "User-Agent": "REED/0.1 (+https://huggingface.co/spaces/coldashsage/reed)",
                 "Accept": "text/html,application/xhtml+xml",
             },
         ) as client:

@@ -7,7 +7,6 @@ operator who wants to run a session out of schedule.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -39,9 +38,30 @@ def trigger_session(
     open (intended for local development only).
     """
     expected = os.environ.get("REED_TRIGGER_TOKEN")
-    if expected:
-        if not x_reed_token or x_reed_token != expected:
+    # Fail closed when token is unset in prod; allow dev only with REED_ENV=dev.
+    if not expected:
+        env = os.environ.get("REED_ENV", "prod")
+        on_hf = bool(os.environ.get("SPACE_ID"))
+        if env != "dev" or on_hf:
+            raise HTTPException(status_code=503, detail="trigger token not configured")
+    else:
+        import hmac
+        if not x_reed_token or not hmac.compare_digest(x_reed_token, expected):
             raise HTTPException(status_code=401, detail="missing or invalid token")
+
+    # Holiday skip: GHA cron path goes through this trigger, so the gate must
+    # live here (not just in scheduler.py) for the HF Space deployment.
+    from datetime import datetime as _dt, timezone as _tz
+    from app.market_calendar import is_us_market_holiday
+    if config.scheduler.skip_holidays and is_us_market_holiday(_dt.now(_tz.utc)):
+        now = _dt.now(_tz.utc)
+        return {
+            "id": None,
+            "headline": "[STUB] skipped (US market holiday)",
+            "session": session,
+            "as_of": now.isoformat(),
+            "skipped": True,
+        }
 
     try:
         provider = get_provider(config)
@@ -69,43 +89,20 @@ def trigger_session(
         import traceback
         print(f"TRIGGER_FAIL: {type(exc).__name__}: {exc}", flush=True)
         print(f"TRIGGER_FAIL_TRACEBACK:\n{traceback.format_exc()}", flush=True)
-        from app.digests.generator import make_stub_provider_result
-        from app.digests.models import (
-            Digest,
-            MarketSnapshotMeta,
-            Story,
-            Source,
-        )
-        stub = make_stub_provider_result()
-        try:
-            payload = json.loads(stub.text)
-        except Exception:
-            payload = {
-                "headline": f"[{type(exc).__name__}] {exc!s}"[:200],
-                "executive_summary": (
-                    f"REED could not generate a structured brief for {session}. "
-                    f"Exception: {type(exc).__name__}: {exc!s}. "
-                    f"The next scheduled trigger will retry."
-                ),
-                "stories": [],
-                "themes": [],
-                "watch_next_session": [],
-                "sources": [],
-            }
-        # Overlay the real exception onto whatever payload we ended up with,
-        # so the operator can see what failed in the dataset repo.
-        payload["headline"] = f"[{type(exc).__name__}] {exc!s}"[:200]
-        payload["executive_summary"] = (
-            f"REED could not generate a structured brief for {session}. "
-            f"Exception: {type(exc).__name__}: {exc!s}. "
-            f"The next scheduled trigger will retry."
-        )
+        from app.digests.models import Digest, MarketSnapshotMeta
+        # Build a clean stub: clear stories/sources/themes so the public dataset
+        # never contains fabricated content. Exception text lives only in the
+        # operator-only warning field and the trigger response log.
         now = datetime.now(timezone.utc)
+        warning = f"{type(exc).__name__}: {exc}"[:500]
         digest = Digest(
             session=session,  # type: ignore[arg-type]
             as_of=now,
-            headline="[STUB] " + payload.get("headline", "Brief generation failed"),
-            executive_summary=payload.get("executive_summary", ""),
+            headline=f"[STUB] {session} brief unavailable",
+            executive_summary=(
+                "REED could not generate a structured brief for this session. "
+                "The next scheduled trigger will retry."
+            ),
             market_snapshot={},
             market_snapshot_meta=MarketSnapshotMeta(
                 source="stub",
@@ -113,10 +110,10 @@ def trigger_session(
                 values_raw={},
                 delayed=True,
             ),
-            stories=[Story(**s) for s in payload.get("stories", [])],
-            themes=payload.get("themes", []),
-            watch_next_session=payload.get("watch_next_session", []),
-            sources=[Source(**s) for s in payload.get("sources", [])],
+            stories=[],
+            themes=[],
+            watch_next_session=[],
+            sources=[],
             generation={
                 "provider": "stub",
                 "model": "stub",
@@ -125,7 +122,7 @@ def trigger_session(
                 "scraped_urls": 0,
                 "fallback_used": True,
                 "duration_ms": 0,
-                "warning": f"{type(exc).__name__}: {exc}"[:500],
+                "warning": warning,
             },
         )
         store.write(digest)

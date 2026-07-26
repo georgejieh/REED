@@ -1,17 +1,20 @@
 name: REED trigger
 
 on:
+  # Source of truth: backend/app/scheduler.py SCHEDULE (US/Eastern).
+  # The crons below are UTC conversions; update them when scheduler.py changes.
+  # EDT crons: Mar-Nov. EST crons: Nov-Mar. Operator reminders in calendar.
   schedule:
-    # pre_market 08:00 ET (12:00 UTC) Mon-Fri
+    # pre_market 08:00 ET (12:00 UTC EDT / 13:00 UTC EST) Mon-Fri
     - cron: "0 12 * * 1-5"
-    # early_market 09:30 ET (13:30 UTC) Mon-Fri
-    - cron: "30 13 * * 1-5"
-    # midday 13:30 ET (17:30 UTC) Mon-Fri
-    - cron: "30 17 * * 1-5"
-    # close 16:15 ET (20:15 UTC) Mon-Fri
+    # early_market 09:45 ET (13:45 UTC EDT / 14:45 UTC EST) Mon-Fri
+    - cron: "45 13 * * 1-5"
+    # midday 12:30 ET (16:30 UTC EDT / 17:30 UTC EST) Mon-Fri
+    - cron: "30 16 * * 1-5"
+    # close 16:15 ET (20:15 UTC EDT / 21:15 UTC EST) Mon-Fri
     - cron: "15 20 * * 1-5"
-    # weekend_recap 07:30 ET (11:30 UTC) Monday only
-    - cron: "30 11 * * 1"
+    # weekend_recap 07:00 ET (11:00 UTC EDT / 12:00 UTC EST) Monday
+    - cron: "0 11 * * 1"
   workflow_dispatch:
     inputs:
       session:
@@ -48,15 +51,22 @@ jobs:
             case "$HOUR" in
               12) SESSION="pre_market" ;;
               13) SESSION="early_market" ;;
-              17) SESSION="midday" ;;
+              16) SESSION="midday" ;;
               20) SESSION="close" ;;
               11) SESSION="weekend_recap" ;;
               *) SESSION="unknown" ;;
             esac
           fi
           echo "Triggering session: $SESSION at $(date -u)"
-          curl -sS -X POST \
+          curl -fsS -X POST \
             -H "X-REED-Token: ${REED_TOKEN}" \
             --max-time 180 --retry 3 --retry-delay 20 --retry-all-errors \
-            -w "\nHTTP:%{http_code}\n" \
+            -o /tmp/reed_resp.json -w "\nHTTP:%{http_code}\n" \
             "https://coldashsage-reed.hf.space/api/trigger/${SESSION}"
+          # Reject stub responses so cron does not silently succeed on failure.
+          if [ -f /tmp/reed_resp.json ]; then
+            if grep -qE '"fallback_used": ?true|"headline": ?"\[[^]]*STUB' /tmp/reed_resp.json; then
+              echo "ERROR: REED trigger returned stub or fallback brief"
+              exit 2
+            fi
+          fi

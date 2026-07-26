@@ -93,9 +93,13 @@ def _coerce_payload(payload: dict) -> dict:
                 s[k] = default
         if not isinstance(s.get("tickers"), list):
             s["tickers"] = []
-        # Drop stories with no source_url — they're useless and may be hallucinated.
+        # Normalize sentiment to one of the Literal values; anything else becomes "neutral".
+        if s.get("sentiment") not in ("bullish", "bearish", "neutral"):
+            s["sentiment"] = "neutral"
+        # Drop stories with no source_url; they are useless and may be hallucinated.
         if not s.get("source_url"):
-            logger.warning("dropping story with no source_url: %r", s.get("headline")[:80])
+            h = s.get("headline")
+            logger.warning("dropping story with no source_url: %r", str(h)[:80] if h is not None else "")
 
     coerced["stories"] = [
         s for s in coerced.get("stories", []) or []
@@ -269,12 +273,24 @@ def generate_digest(
         duration_ms = agent_result.duration_ms
 
     as_of = datetime.now(timezone.utc)
+    # Build values_raw from fetched quotes; never leave it empty when quotes exist.
+    values_raw = {
+        sym: {
+            "value": q.value,
+            "change_pct": q.change_pct,
+            "as_of": q.as_of,
+            "delayed": q.delayed,
+        }
+        for sym, q in snapshot_quotes.items()
+    }
     meta = market_snapshot_meta or MarketSnapshotMeta(
         source="stooq" if snapshot_quotes else "stub",
         fetched_at=as_of.isoformat(timespec="seconds"),
-        values_raw={},
+        values_raw=values_raw,
         delayed=True,
     )
+    if snapshot_quotes and not values_raw:
+        logger.warning("market snapshot empty despite quotes fetched")
 
     stories = [Story(**s) for s in payload.get("stories", [])]
     sources = [Source(**s) for s in payload.get("sources", [])]

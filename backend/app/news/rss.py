@@ -84,7 +84,7 @@ async def _fetch_one(client: httpx.AsyncClient, outlet: str, url: str) -> list[H
         response = await client.get(
             url,
             headers={
-                "User-Agent": "REED/0.1 (+https://github.com/georgejieh/REED)",
+                "User-Agent": "REED/0.1 (+https://huggingface.co/spaces/coldashsage/reed)",
                 "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
             },
             timeout=REQUEST_TIMEOUT,
@@ -101,7 +101,16 @@ async def _fetch_one(client: httpx.AsyncClient, outlet: str, url: str) -> list[H
     if "xml" not in ct and not response.text.lstrip().startswith(("<?xml", "<rss", "<feed", "<rdf")):
         logger.warning("rss non-xml body for %s (%s): content-type=%s", outlet, url, ct)
         return []
-    parsed = feedparser.parse(response.content)
+    # Cap response body to prevent OOM on a free Space; reject oversized feeds early.
+    cl = response.headers.get("content-length")
+    if cl and int(cl) > MAX_RESPONSE_BYTES:
+        logger.warning("rss %s exceeded size cap (header): %s bytes", outlet, cl)
+        return []
+    content = response.content[: MAX_RESPONSE_BYTES + 1]
+    if len(content) > MAX_RESPONSE_BYTES:
+        logger.warning("rss %s exceeded size cap (actual): %s bytes", outlet, len(content))
+        return []
+    parsed = feedparser.parse(content)
     if parsed.bozo and not parsed.entries:
         logger.warning("rss bozo for %s (%s): %s", outlet, url, parsed.bozo_exception)
         return []

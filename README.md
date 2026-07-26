@@ -128,7 +128,7 @@ Sessions are defined in `backend/app/sessions/`. Built-in sessions:
 - `early_market`, the first hour of trading.
 - `midday`, the mid-session recap.
 - `close`, the end-of-day summary.
-- `weekend_recap`, a Saturday wrap of the week.
+- `weekend_recap`, a Monday-morning wrap of the week.
 
 ## Quick start
 

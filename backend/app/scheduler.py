@@ -12,11 +12,11 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from exchange_calendars import get_calendar
 
 from app.api.deps import get_config, get_store
 from app.config import AppConfig
 from app.digests.generator import generate_digest
+from app.market_calendar import is_us_market_holiday
 from app.providers.factory import get_provider
 
 logger = logging.getLogger(__name__)
@@ -29,25 +29,13 @@ SCHEDULE: dict[str, dict[str, str | int]] = {
     "close": {"hour": 16, "minute": 15, "day_of_week": "mon-fri"},
 }
 
-_NYSE = get_calendar("XNYS")
-
-
-def _is_holiday(now: datetime) -> bool:
-    """Return True if `now` (assumed US/Eastern) is a US market holiday."""
-    try:
-        day = now.date().isoformat()
-        return not _NYSE.is_session(day)
-    except Exception as exc:
-        logger.warning("holiday check failed: %s", exc)
-        return False
-
 
 def _run_session(session: str) -> None:
     """Scheduler job: run generate_digest for one session."""
     cfg = get_config()
     if not cfg.scheduler.enabled:
         return
-    if cfg.scheduler.skip_holidays and _is_holiday(datetime.now()):
+    if cfg.scheduler.skip_holidays and is_us_market_holiday(datetime.now()):
         logger.info("skipping %s (US market holiday)", session)
         return
 

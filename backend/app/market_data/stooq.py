@@ -41,7 +41,7 @@ class StooqProvider(MarketDataProvider):
                 self.BASE_URL,
                 params=params,
                 timeout=self._timeout,
-                headers={"User-Agent": "REED/0.1 (+https://github.com/georgejieh/REED)"},
+                headers={"User-Agent": "REED/0.1 (+https://huggingface.co/spaces/coldashsage/reed)"},
             )
         except httpx.HTTPError as exc:
             logger.warning("stooq request failed: %s", exc)

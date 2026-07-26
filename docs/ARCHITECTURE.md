@@ -46,23 +46,20 @@ reed/
 
 REED supports five LLM provider classes: Anthropic, OpenAI, OpenRouter, Ollama, and a generic OpenAI-compatible client. The generic client covers any service that speaks the OpenAI API shape: Together, Groq, Fireworks, DeepInfra, Google Gemini, Mistral, Cohere, xAI, Perplexity, vLLM, llama.cpp server, LM Studio, llamafile, and others. The operator supplies `base_url`, `api_key`, and `model`; nothing else is provider-specific.
 
-The wizard detects which keys are present in `.env` and only offers the matching providers. There is no default provider and no default model. The provider interface exposes `generate(system, user, *, tools, tool_choice, max_turns, json_mode, model)` and capability flags for tool support and JSON mode, so the runner can fall back to a two-pass plan for local models that lack tool calling.
+The wizard detects which keys are present in `.env` and only offers the matching providers. There is no default provider and no default model. The provider interface exposes `generate(system, user, *, tools, tool_choice, max_turns, json_mode, model)` and capability flags for tool support and JSON mode. The current runner does not implement the documented two-pass plan for local models; only the cron path runs in production and it uses a single OpenRouter-backed Gemini call.
 
-## 4. Agent loop
+## 4. Session run shape
 
-A session runs as a short agent loop:
+A session runs as a single LLM call with no tools exposed to the model:
 
-1. Market data is pre-fetched before the agent sees anything, populating `market_snapshot` and `market_snapshot_meta` so the model cannot invent numbers.
-2. A curated RSS pre-flight fetches and deduplicates public headlines for the session. The rendered headlines are placed in the user prompt as static context.
-3. The agent begins with the session's system prompt and a user prompt containing the headlines, time window, and topic.
-4. The model may call `scrape_url` for a small number of selected articles, or emit a final answer. The runner enforces the configured per-session scrape budget.
-5. The final answer is parsed into the digest schema. On parse failure the error is sent back and retried up to two times.
-6. A hard cap of six turns total applies. If the cap is reached without a parseable answer, the runner force-validates the best partial into a minimal digest so the dashboard never fails completely.
-7. The runner merges agent-owned fields with runner-owned fields, validates the full Pydantic schema, and writes the digest to the store.
+1. Market data is pre-fetched before the model sees anything, populating `market_snapshot` and `market_snapshot_meta` so the model cannot invent numbers. `MarketSnapshotMeta.values_raw` carries the per-symbol values the dashboard reads.
+2. A curated RSS pre-flight fetches and deduplicates public headlines for the session, filtered by the session's `time_window` (e.g. "last 12 hours"). Entries with unparseable timestamps are dropped; entries with future-dated timestamps (> now + 15 min) are dropped.
+3. The runner calls `provider.generate` once with the session system prompt and a user prompt containing the headlines, time window, and topic. `tools=[]` and `max_turns=1`.
+4. The response is parsed as JSON. On parse failure the runner retries once with a corrective system prompt; if that still fails, a balanced-JSON extractor is tried as a last resort.
+5. If no parseable JSON is recovered, the runner synthesizes a fallback digest with `fallback_used=True` so the trigger does not 500 and the dataset repo still gets a record.
+6. The runner merges runner-owned fields (`id`, `session`, `as_of`, `market_snapshot`, `market_snapshot_meta`, `generation`) with agent-owned fields and validates the full Pydantic schema before writing.
 
-For Ollama models without tool support, the runner uses a deterministic
-fallback that requests structured JSON and then asks again with
-`json_mode=True` for the final digest.
+The bounded `scrape_url` tool is still exposed via `bind_scrape_tool()` for operator-driven CLI use, but it is not wired into the session agent loop. Returning `[]` from `get_agent_tools()` enforces this at runtime.
 
 ## 5. Digest data shape
 
@@ -110,7 +107,7 @@ Read endpoints need no authentication. The trigger endpoint exists so an externa
 
 ## 8. Cron schedule
 
-All session times are stored as US/Eastern in `settings.yaml` and converted to UTC for the scheduler.
+Canonical session times are defined in `backend/app/scheduler.py` as `SCHEDULE` (US/Eastern). `.github/workflows/reed-trigger.yml` mirrors them in UTC for HF Spaces and must be updated whenever `scheduler.py` changes. `backend/settings.yaml` does not contain session times.
 
 | Job name | Time (ET) | Days |
 |----------|-----------|------|
