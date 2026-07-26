@@ -192,6 +192,18 @@ def _parse_payload(
     return _merge_payload(_coerce_payload(payload, allowed_links), snapshot)
 
 
+def _normalize_as_of(as_of: datetime | None) -> datetime:
+    """Return an aware UTC anchor.
+
+    Rejects naive timestamps. Aware values are converted to UTC.
+    """
+    if as_of is None:
+        return datetime.now(timezone.utc)
+    if as_of.tzinfo is None or as_of.tzinfo.utcoffset(as_of) is None:
+        raise ValueError("naive as_of not allowed; pass an aware datetime")
+    return as_of.astimezone(timezone.utc)
+
+
 def generate_digest(
     *,
     session: str,
@@ -205,8 +217,8 @@ def generate_digest(
     """Generate and persist a digest for the named session.
 
     `as_of` is the anchor for both the time-window RSS filter and the
-    digest's own as_of field. Defaults to `datetime.now(timezone.utc)`.
-    Pass an explicit `as_of` for backfill to target a past date.
+    digest's own as_of field. It must be timezone-aware; naive values are
+    rejected. Defaults to `datetime.now(timezone.utc)`.
 
     When `provider` is None, uses the stub pipeline for smoke tests.
     Otherwise fetches a market snapshot, runs the agent, parses the
@@ -216,6 +228,7 @@ def generate_digest(
     if session not in names_to_defs:
         raise ValueError(f"unknown session {session!r}")
     session_def = names_to_defs[session]
+    anchor = _normalize_as_of(as_of)
 
     if provider is None:
         result = make_stub_provider_result()
@@ -225,23 +238,21 @@ def generate_digest(
         tool_call_count = 0
         scraped_url_count = 0
         fallback_used = True
-        snapshot_quotes: dict[str, Quote] = {}
         warning: str | None = None
         duration_ms = 0
+        snapshot_quotes: dict[str, Quote] = {}
+        snapshot_dict: dict[str, dict[str, str | None]] = {}
     else:
         market_provider = get_market_data_provider(config)
         snapshot_quotes = market_provider.fetch_quotes()
         snapshot_dict = _snapshot_to_dict(snapshot_quotes)
 
         # Pre-flight RSS: fetch curated headlines for this session, filtered
-        # by the session's time_window (e.g. "last 12 hours"). When `as_of`
-        # is set (backfill), the time-window filter anchors to `as_of` so
-        # the headline selection targets the past date range, not "now".
+        # by the exact America/New_York calendar window anchored at `as_of`.
         headlines = fetch_headlines(
             session_def.name,
-            time_window=session_def.time_window,
             per_session_cap=25,
-            now=as_of,
+            now=anchor,
         )
         headlines_block = render_for_prompt(headlines)
 
@@ -306,7 +317,6 @@ def generate_digest(
         warning = warning or agent_result.warning
         duration_ms = agent_result.duration_ms
 
-    as_of = as_of or datetime.now(timezone.utc)
     # Build values_raw from fetched quotes; never leave it empty when quotes exist.
     values_raw = {
         sym: {
@@ -319,7 +329,7 @@ def generate_digest(
     }
     meta = market_snapshot_meta or MarketSnapshotMeta(
         source="stooq" if snapshot_quotes else "stub",
-        fetched_at=as_of.isoformat(timespec="seconds"),
+        fetched_at=anchor.isoformat(timespec="seconds"),
         values_raw=values_raw,
         delayed=True,
     )
@@ -331,7 +341,7 @@ def generate_digest(
 
     digest = Digest(
         session=session,  # type: ignore[arg-type]
-        as_of=as_of,
+        as_of=anchor,
         headline=payload.get("headline", ""),
         executive_summary=payload.get("executive_summary", ""),
         market_snapshot=payload.get("market_snapshot", market_snapshot or {}),

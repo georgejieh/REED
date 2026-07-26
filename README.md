@@ -39,7 +39,7 @@ Every scheduled session runs the same six steps, synchronously, inside one trigg
 
 1. **RSS pre-flight.** Curated public feeds for that session are fetched concurrently, capped at 15 entries per outlet and 25 per session, and deduplicated by link. Each response is checked for an XML content type and capped at 5 MB, so an oversized or wrong-typed feed cannot take the process down.
 
-2. **Time filter.** Entries are kept only if they fall inside the session's window, for example the last 12 hours. Entries dated more than 15 minutes in the future are dropped, because real feeds carry clock-skew and promo items. Entries with no usable timestamp are also dropped. The model has no web access and its training data predates the session, so it cannot judge whether an undated item belongs in today's brief, and an undated entry that reaches the prompt is indistinguishable from a current one.
+2. **Time filter.** Entries are kept only if they fall inside the session's exact America/New_York calendar window. Windows are inclusive start/end and fixed to the anchor day's local ET date; they are not rolling durations. Entries outside the inclusive bounds are dropped, and entries with no usable timestamp are dropped. The model has no web access and its training data predates the session, so it cannot judge whether an undated item belongs in this brief, and an undated entry that reaches the prompt is indistinguishable from a current one.
 
 3. **One LLM call.** The runner calls the provider exactly once with `tools=[]`, `max_turns=1`, and `json_mode=true`. The session prompt carries the filtered headlines, the time window, the topic, and a live market snapshot. There is no tool loop and no second turn.
 
@@ -65,7 +65,7 @@ Four briefs on a normal trading day, plus a weekend recap on Monday morning, for
 
 The in-process scheduler (APScheduler) fires these automatically, and it skips days the NYSE is closed using the `exchange_calendars` XNYS calendar. On an always-on machine this is the only cron you need. The holiday check lives in a shared module used by both the scheduler and the HTTP trigger, so both firing paths behave the same way.
 
-Sessions can be backfilled. The trigger endpoint accepts an `as_of` query parameter, which anchors both the RSS time filter and the digest's own timestamp to a past date.
+Sessions can be backfilled. The trigger endpoint accepts an `as_of` query parameter, which anchors both the RSS time filter and the digest's own timestamp to a past date. The value must be ISO-8601 with a timezone ('Z' or an explicit offset); naive timestamps are rejected.
 
 ## What REED Is Not
 

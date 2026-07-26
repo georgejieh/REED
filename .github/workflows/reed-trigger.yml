@@ -1,20 +1,20 @@
 name: REED trigger
 
 on:
-  # Source of truth: backend/app/scheduler.py SCHEDULE (US/Eastern).
-  # The crons below are UTC conversions; update them when scheduler.py changes.
-  # EDT crons: Mar-Nov. EST crons: Nov-Mar. Operator reminders in calendar.
+  # Source of truth: backend/app/news/rss.py exact ET windows.
+  # Each schedule entry uses GitHub Actions timezone-aware cron with
+  # America/New_York local values. Unknown schedules fail the run.
   schedule:
-    # pre_market 08:00 ET (12:00 UTC EDT / 13:00 UTC EST) Mon-Fri
-    - cron: "0 12 * * 1-5"
-    # early_market 09:45 ET (13:45 UTC EDT / 14:45 UTC EST) Mon-Fri
-    - cron: "45 13 * * 1-5"
-    # midday 12:30 ET (16:30 UTC EDT / 17:30 UTC EST) Mon-Fri
-    - cron: "30 16 * * 1-5"
-    # close 16:15 ET (20:15 UTC EDT / 21:15 UTC EST) Mon-Fri
-    - cron: "15 20 * * 1-5"
-    # weekend_recap 07:00 ET (11:00 UTC EDT / 12:00 UTC EST) Monday
-    - cron: "0 11 * * 1"
+    - cron: "0 8 * * 1-5"
+      timezone: "America/New_York"
+    - cron: "45 9 * * 1-5"
+      timezone: "America/New_York"
+    - cron: "30 12 * * 1-5"
+      timezone: "America/New_York"
+    - cron: "15 16 * * 1-5"
+      timezone: "America/New_York"
+    - cron: "0 7 * * 1"
+      timezone: "America/New_York"
   workflow_dispatch:
     inputs:
       session:
@@ -40,21 +40,13 @@ jobs:
           if [ -n "${{ inputs.session }}" ]; then
             SESSION="${{ inputs.session }}"
           else
-            # Cron run: infer session from current UTC time
-            # Each cron fires within a known 1-hour window. Map the current
-            # UTC hour to the session scheduled for that window.
-            HOUR=$(date -u +%-H)
-            MIN=$(date -u +%-M)
-            # Use hour ranges that don't overlap. Adjust if DST shifts the
-            # windows (cron expressions above are in standard EST, so for
-            # ~Nov-Mar EDT shifts +1h, the windows below shift too).
-            case "$HOUR" in
-              12) SESSION="pre_market" ;;
-              13) SESSION="early_market" ;;
-              16) SESSION="midday" ;;
-              20) SESSION="close" ;;
-              11) SESSION="weekend_recap" ;;
-              *) SESSION="unknown" ;;
+            case "${{ github.event.schedule }}" in
+              "0 8 * * 1-5") SESSION="pre_market" ;;
+              "45 9 * * 1-5") SESSION="early_market" ;;
+              "30 12 * * 1-5") SESSION="midday" ;;
+              "15 16 * * 1-5") SESSION="close" ;;
+              "0 7 * * 1") SESSION="weekend_recap" ;;
+              *) echo "ERROR: unknown schedule: ${{ github.event.schedule }}"; exit 1 ;;
             esac
           fi
           echo "Triggering session: $SESSION at $(date -u)"

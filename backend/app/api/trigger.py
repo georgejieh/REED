@@ -24,6 +24,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/trigger", tags=["trigger"])
 
 
+def _parse_as_of(as_of: str) -> datetime:
+    """Parse an ISO-8601 `as_of` query parameter into an aware UTC datetime.
+
+    Naive timestamps are rejected. Values must include either a 'Z'
+    suffix or an explicit UTC offset (e.g. +00:00, -04:00).
+    """
+    try:
+        parsed = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid as_of: {as_of!r}; expected ISO-8601 with timezone (Z or explicit offset)",
+        ) from exc
+    if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"naive as_of: {as_of!r}; include 'Z' or an explicit timezone offset",
+        )
+    return parsed.astimezone(timezone.utc)
+
+
 @router.post("/{session}", response_model=dict)
 def trigger_session(
     session: str,
@@ -38,10 +59,10 @@ def trigger_session(
     `X-REED-Token` header must match. When unset, the endpoint is
     open only when REED_ENV=dev and we are not on HF (operator override).
 
-    Optional `as_of` query param (ISO-8601 UTC) anchors the time-window
-    RSS filter and the digest's own as_of field. Used for backfilling
-    briefs for past dates when RSS feeds still have the headlines in
-    their payload. Format: ?as_of=2026-07-23T08:00:00Z
+    Optional `as_of` query param (ISO-8601 with timezone) anchors the
+    time-window RSS filter and the digest's own as_of field. Used for
+    backfilling briefs for past dates when RSS feeds still have the
+    headlines in their payload. Format: ?as_of=2026-07-23T08:00:00Z
     """
     expected = os.environ.get("REED_TRIGGER_TOKEN")
     # Fail closed when token is unset in prod; allow dev only with REED_ENV=dev.
@@ -60,10 +81,7 @@ def trigger_session(
     # not today.
     parsed_as_of = None
     if as_of:
-        try:
-            parsed_as_of = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"invalid as_of: {as_of!r}; expected ISO-8601 UTC")
+        parsed_as_of = _parse_as_of(as_of)
 
     # Holiday skip: GHA cron path goes through this trigger, so the gate must
     # live here (not just in scheduler.py) for the HF Space deployment.

@@ -17,6 +17,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import feedparser
 import httpx
@@ -32,6 +33,38 @@ class Headline:
     link: str
     published_at: str  # ISO 8601; may be empty if the feed omits it
     summary: str
+
+
+@dataclass
+class WindowBounds:
+    """Inclusive start/end in America/New_York local time."""
+
+    start: datetime
+    end: datetime
+
+
+ET = ZoneInfo("America/New_York")
+
+
+# Per-session ET time windows. Bounds are inclusive and keyed to the
+# anchor day's America/New_York calendar date.
+#
+# Tuple shape: ((start_day_delta, start_hour, start_minute),
+#               (end_day_delta, end_hour, end_minute)).
+# start_day_delta=0 means the same ET calendar day as the anchor;
+# -1 means the previous calendar day.
+_SESSION_WINDOWS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
+    "pre_market": ((-1, 17, 0), (0, 8, 0)),
+    "early_market": ((0, 8, 0), (0, 9, 45)),
+    "midday": ((0, 9, 45), (0, 12, 30)),
+    "close": ((0, 12, 30), (0, 16, 15)),
+}
+
+WEEKEND_RECAP_END_WEEKDAY = 0  # Monday
+WEEKEND_RECAP_START_DAY_DELTA = 3  # Friday (Mon - 3 days).
+WEEKEND_RECAP_END_DAY_DELTA = 2  # Saturday (Mon - 2 days).
+WEEKEND_RECAP_START_HOUR, WEEKEND_RECAP_START_MINUTE = 17, 0
+WEEKEND_RECAP_END_HOUR, WEEKEND_RECAP_END_MINUTE = 23, 55
 
 
 # Per-session feed lists. Each session uses a curated subset.
@@ -78,10 +111,6 @@ MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB cap per feed
 REQUEST_TIMEOUT = 8.0  # seconds per feed
 MAX_CONCURRENT = 4  # bounded concurrency across feeds
 
-# Headlines dated more than this many minutes in the future are
-# treated as bogus (clock skew, timezone bugs) and dropped by filter_by_window.
-FUTURE_TOLERANCE_MINUTES = 15
-
 
 async def _fetch_one(client: httpx.AsyncClient, outlet: str, url: str) -> list[Headline]:
     try:
@@ -119,11 +148,13 @@ async def _fetch_one(client: httpx.AsyncClient, outlet: str, url: str) -> list[H
         logger.warning("rss bozo for %s (%s): %s", outlet, url, parsed.bozo_exception)
         return []
     out: list[Headline] = []
+    seen: set[str] = set()
     for entry in parsed.entries[:15]:  # cap per outlet
         title = (entry.get("title") or "").strip()
         link = (entry.get("link") or "").strip()
-        if not title or not link:
+        if not title or not link or link in seen:
             continue
+        seen.add(link)
         # Sanitize summary: strip HTML, collapse whitespace, cap length.
         raw_summary = (entry.get("summary") or entry.get("description") or "").strip()
         if raw_summary:
@@ -184,19 +215,103 @@ async def _fetch_all_async(feeds: list[tuple[str, str]]) -> list[Headline]:
     return out
 
 
+def _ensure_aware_utc(value: datetime) -> datetime:
+    """Reject naive datetimes and return an aware UTC datetime."""
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise ValueError("naive datetime not allowed; pass an aware value")
+    return value.astimezone(timezone.utc)
+
+
+def compute_session_bounds(session: str, anchor: datetime) -> WindowBounds:
+    """Return inclusive America/New_York bounds for `session`.
+
+    `anchor` must be timezone-aware. It is normalized to ET and used to
+    pick the anchor calendar date; the exact window depends only on
+    that date, not on the anchor's minute.
+
+    weekend_recap requires a Monday anchor and spans the previous
+    Friday 17:00 through Saturday 23:55 ET.
+    """
+    anchor_utc = _ensure_aware_utc(anchor)
+    anchor_et = anchor_utc.astimezone(ET)
+    if session == "weekend_recap":
+        if anchor_et.weekday() != WEEKEND_RECAP_END_WEEKDAY:
+            raise ValueError(
+                "weekend_recap requires a Monday anchor in America/New_York"
+            )
+        anchor_date = anchor_et.date()
+        start_date = anchor_date - timedelta(days=WEEKEND_RECAP_START_DAY_DELTA)
+        end_date = anchor_date - timedelta(days=WEEKEND_RECAP_END_DAY_DELTA)
+        # Build wall-clock datetimes on the target dates so each bound
+        # inherits the natural offset for that date (handles DST).
+        start = datetime(
+            start_date.year, start_date.month, start_date.day,
+            WEEKEND_RECAP_START_HOUR, WEEKEND_RECAP_START_MINUTE,
+            tzinfo=ET,
+        )
+        end = datetime(
+            end_date.year, end_date.month, end_date.day,
+            WEEKEND_RECAP_END_HOUR, WEEKEND_RECAP_END_MINUTE,
+            tzinfo=ET,
+        )
+        return WindowBounds(start=start, end=end)
+    spec = _SESSION_WINDOWS.get(session)
+    if spec is None:
+        raise ValueError(f"unknown session {session!r}")
+    start_offset, end_offset = spec
+    start = (anchor_et + timedelta(days=start_offset[0])).replace(
+        hour=start_offset[1], minute=start_offset[2], second=0, microsecond=0
+    )
+    end = (anchor_et + timedelta(days=end_offset[0])).replace(
+        hour=end_offset[1], minute=end_offset[2], second=0, microsecond=0
+    )
+    return WindowBounds(start=start, end=end)
+
+
+def filter_by_session(
+    headlines: list[Headline],
+    session: str,
+    anchor: datetime,
+) -> list[Headline]:
+    """Return headlines whose published_at falls within the exact ET
+    calendar window for `session` anchored at `anchor`.
+
+    `anchor` must be timezone-aware. Naive anchors raise ValueError.
+    Entries without a parseable timestamp are dropped. Entries whose
+    publication timestamp is before the window start or after the
+    inclusive window end are dropped. There is no future-tolerance
+    extension; the window end is strict.
+    """
+    bounds = compute_session_bounds(session, anchor)
+    start_utc = bounds.start.astimezone(timezone.utc)
+    end_utc = bounds.end.astimezone(timezone.utc)
+    out: list[Headline] = []
+    undated = 0
+    for h in headlines:
+        dt = _published_to_aware_dt(h.published_at)
+        if dt is None:
+            undated += 1
+            continue
+        if start_utc <= dt <= end_utc:
+            out.append(h)
+    if undated:
+        logger.info("rss filter: dropped %d headline(s) with no usable timestamp", undated)
+    return out
+
+
 def fetch_headlines(
     session: str,
     *,
-    time_window: str | None = None,
     per_session_cap: int = 25,
     now: datetime | None = None,
 ) -> list[Headline]:
     """Synchronous entry point. Fetches all configured feeds for `session`,
-    dedupes by link, optionally filters by `time_window`, and caps at
-    per_session_cap.
+    dedupes by link, filters by the exact session-aware calendar window
+    anchored at `now`, and caps at `per_session_cap`.
 
-    `now` is the anchor for the time-window filter. Default is the current
-    UTC time. Pass an explicit `now` for backfill to target a past date.
+    `now` is the anchor for the time-window filter. It must be
+    timezone-aware when given; otherwise it is rejected. Defaults to the
+    current UTC time.
     """
     feeds = RSS_FEEDS.get(session, [])
     if not feeds:
@@ -214,46 +329,13 @@ def fetch_headlines(
     except RuntimeError:
         # No event loop at all.
         headlines = asyncio.run(_fetch_all_async(feeds))
-    if time_window:
-        before = len(headlines)
-        headlines = filter_by_window(headlines, time_window, now=now)
-        logger.info(
-            "rss filter: kept %d of %d headlines for time_window=%r now=%s",
-            len(headlines), before, time_window, now.isoformat() if now else "live",
-        )
+    if now is not None:
+        now = _ensure_aware_utc(now)
+    else:
+        now = datetime.now(timezone.utc)
+    # Always apply the exact session window when an anchor is available.
+    headlines = filter_by_session(headlines, session, now)
     return headlines[:per_session_cap]
-
-
-_TIME_WINDOW_UNITS = {
-    "minute": 60,
-    "minutes": 60,
-    "hour": 3600,
-    "hours": 3600,
-    "day": 86400,
-    "days": 86400,
-    "week": 604800,
-    "weeks": 604800,
-}
-
-
-def parse_time_window(text: str) -> timedelta | None:
-    """Parse a session time_window string like "last 12 hours" or "last 90 minutes".
-
-    Returns a timedelta or None if the string is not in the expected format.
-    """
-    import re
-    if not text:
-        return None
-    m = re.match(
-        r"^\s*last\s+(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks)\s*$",
-        text.strip(),
-        re.IGNORECASE,
-    )
-    if not m:
-        return None
-    n = int(m.group(1))
-    unit = m.group(2).lower()
-    return timedelta(seconds=_TIME_WINDOW_UNITS[unit] * n)
 
 
 def _published_to_aware_dt(published_at: str) -> datetime | None:
@@ -271,51 +353,6 @@ def _published_to_aware_dt(published_at: str) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
-
-
-def filter_by_window(
-    headlines: list[Headline],
-    time_window: str,
-    *,
-    now: datetime | None = None,
-) -> list[Headline]:
-    """Return only headlines whose published_at is within `time_window` AND not
-    significantly in the future relative to `now`.
-
-    A headline is kept when `cutoff <= published_at <= now + FUTURE_TOLERANCE`.
-    The upper bound exists because real RSS feeds occasionally have
-    future-dated items (clock skew, timezone bugs, promo items). For
-    backfill mode (now anchored to a past date), the upper bound drops
-    headlines that were published AFTER the backfill date.
-
-    `now` is injectable for tests; defaults to `datetime.now(timezone.utc)`.
-
-    Headlines without a usable timestamp are dropped. The model has no web
-    access and its training data is older than the session window, so it
-    cannot judge whether an undated item belongs in this brief. An undated
-    entry that survives into the prompt is indistinguishable from a current
-    one, so the safe default is to drop it rather than let the model guess.
-    """
-    delta = parse_time_window(time_window)
-    if delta is None:
-        # Unparseable window: keep everything.
-        return list(headlines)
-    if now is None:
-        now = datetime.now(timezone.utc)
-    cutoff = now - delta
-    upper = now + timedelta(minutes=FUTURE_TOLERANCE_MINUTES)
-    out: list[Headline] = []
-    undated = 0
-    for h in headlines:
-        dt = _published_to_aware_dt(h.published_at)
-        if dt is None:
-            undated += 1
-            continue
-        if cutoff <= dt <= upper:
-            out.append(h)
-    if undated:
-        logger.info("rss filter: dropped %d headline(s) with no usable timestamp", undated)
-    return out
 
 
 def render_for_prompt(headlines: list[Headline]) -> str:

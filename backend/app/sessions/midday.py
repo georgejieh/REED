@@ -10,7 +10,7 @@ MIDDAY = SessionDef(
         "US equity midday update: midday movers, sector rotation, "
         "mid-session economic releases, lunch lull activity."
     ),
-    time_window="last 3 hours",
+    time_window="America/New_York 09:45 through 12:30",
     system_prompt=(
         "You are a market-research agent for REED. The headlines below are pre-fetched "
         "and represent the universe of relevant coverage for this session. Synthesize "
@@ -21,7 +21,6 @@ MIDDAY = SessionDef(
         "Time window: {time_window}\n\n"
         "Pre-fetched headlines within the time window (use only these URLs; do not invent any):\n"
         "{headlines}\n\n"
-        "Disregard any headline whose publication date is older than {time_window}.\n\n"
         "Output a single JSON object matching this schema.\n"
         "No prose outside the JSON. No markdown fences. No commentary inside the JSON.\n"
         "The first character of your response must be {{ and the last must be }}.\n\n"

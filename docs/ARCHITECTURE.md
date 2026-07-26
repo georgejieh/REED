@@ -128,10 +128,10 @@ model:
    model cannot invent numbers. `MarketSnapshotMeta.values_raw`
    carries the per-symbol values the dashboard reads.
 2. A curated RSS pre-flight fetches and deduplicates public headlines
-   for the session, filtered by the session's `time_window` (e.g.
-   "last 12 hours"). Entries with unparseable timestamps are dropped.
-   Entries dated more than 15 minutes in the future relative to the
-   trigger time are dropped (clock skew, timezone bugs, promo items).
+   for the session, filtered by the session's exact America/New_York
+   calendar window. Entries with unparseable timestamps are dropped.
+   Entries outside the inclusive ET bounds are dropped; the window is
+   fixed to the anchor day's local ET date and is not a rolling duration.
 3. The runner calls `provider.generate` once with the session system
    prompt and a user prompt containing the headlines, time window, and
    topic. `tools=[]` and `max_turns=1`.
@@ -207,7 +207,8 @@ not hit the API at runtime.
 The trigger endpoint accepts the `X-REED-Token` header when
 `REED_TRIGGER_TOKEN` is set, fail-closed in production when unset,
 and accepts an optional `?as_of=ISO8601` query parameter for
-backfilling past dates.
+backfilling past dates. The `as_of` value must include a timezone
+('Z' or an explicit offset); naive timestamps are rejected.
 
 ## 11. Cron schedule
 

@@ -11,7 +11,7 @@ WEEKEND_RECAP = SessionDef(
         "macro themes, upcoming week's calendar, and weekend news that "
         "may set the tone for Monday."
     ),
-    time_window="last 7 days",
+    time_window="America/New_York Monday anchor: previous Friday 17:00 through Saturday 23:55",
     system_prompt=(
         "You are a market-research agent for REED. The headlines below are pre-fetched "
         "and represent the universe of relevant coverage for this session. Synthesize "
@@ -22,7 +22,6 @@ WEEKEND_RECAP = SessionDef(
         "Time window: {time_window}\n\n"
         "Pre-fetched headlines within the time window (use only these URLs; do not invent any):\n"
         "{headlines}\n\n"
-        "Disregard any headline whose publication date is older than {time_window}.\n\n"
         "Output a single JSON object matching this schema.\n"
         "No prose outside the JSON. No markdown fences. No commentary inside the JSON.\n"
         "The first character of your response must be {{ and the last must be }}.\n\n"

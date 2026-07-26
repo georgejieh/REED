@@ -11,7 +11,7 @@ EARLY_MARKET = SessionDef(
         "rotation, morning earnings reactions, breaking news during "
         "the cash session."
     ),
-    time_window="last 90 minutes",
+    time_window="America/New_York 08:00 through 09:45",
     system_prompt=(
         "You are a market-research agent for REED. The headlines below are pre-fetched "
         "and represent the universe of relevant coverage for this session. Synthesize "
@@ -22,7 +22,6 @@ EARLY_MARKET = SessionDef(
         "Time window: {time_window}\n\n"
         "Pre-fetched headlines within the time window (use only these URLs; do not invent any):\n"
         "{headlines}\n\n"
-        "Disregard any headline whose publication date is older than {time_window}.\n\n"
         "Output a single JSON object matching this schema.\n"
         "No prose outside the JSON. No markdown fences. No commentary inside the JSON.\n"
         "The first character of your response must be {{ and the last must be }}.\n\n"
