@@ -78,6 +78,10 @@ MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB cap per feed
 REQUEST_TIMEOUT = 8.0  # seconds per feed
 MAX_CONCURRENT = 4  # bounded concurrency across feeds
 
+# Headlines dated more than this many minutes in the future are
+# treated as bogus (clock skew, timezone bugs) and dropped by filter_by_window.
+FUTURE_TOLERANCE_MINUTES = 15
+
 
 async def _fetch_one(client: httpx.AsyncClient, outlet: str, url: str) -> list[Headline]:
     try:
@@ -275,7 +279,14 @@ def filter_by_window(
     *,
     now: datetime | None = None,
 ) -> list[Headline]:
-    """Return only headlines whose published_at is within `time_window`.
+    """Return only headlines whose published_at is within `time_window` AND not
+    significantly in the future relative to `now`.
+
+    A headline is kept when `cutoff <= published_at <= now + FUTURE_TOLERANCE`.
+    The upper bound exists because real RSS feeds occasionally have
+    future-dated items (clock skew, timezone bugs, promo items). For
+    backfill mode (now anchored to a past date), the upper bound drops
+    headlines that were published AFTER the backfill date.
 
     `now` is injectable for tests; defaults to `datetime.now(timezone.utc)`.
     Headlines without a usable timestamp are kept (the LLM can decide).
@@ -287,6 +298,7 @@ def filter_by_window(
     if now is None:
         now = datetime.now(timezone.utc)
     cutoff = now - delta
+    upper = now + timedelta(minutes=FUTURE_TOLERANCE_MINUTES)
     out: list[Headline] = []
     for h in headlines:
         dt = _published_to_aware_dt(h.published_at)
@@ -294,7 +306,7 @@ def filter_by_window(
             # No usable timestamp: keep it.
             out.append(h)
             continue
-        if dt >= cutoff:
+        if cutoff <= dt <= upper:
             out.append(h)
     return out
 
