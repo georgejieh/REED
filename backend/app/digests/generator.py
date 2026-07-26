@@ -67,12 +67,23 @@ def _snapshot_to_dict(quotes: dict[str, Quote]) -> dict[str, dict[str, str | Non
     return out
 
 
-def _coerce_payload(payload: dict) -> dict:
+def _normalize_url(url: str) -> str:
+    """Normalize a URL for comparison: strip query, fragment, trailing slash."""
+    from urllib.parse import urlsplit, urlunsplit
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.rstrip("/") if parts.path else "", "", "")).lower()
+
+
+def _coerce_payload(payload: dict, allowed_links: set[str] | None = None) -> dict:
     """Coerce null/missing fields to defaults so the Story/Source models accept them.
 
     The LLM occasionally emits `null` for fields it cannot fill (summary,
     sentiment). Pydantic rejects None for required strings, so we replace
     null with sensible defaults here. Lists default to empty.
+
+    If `allowed_links` is provided, any story whose `source_url` is not
+    in that set is dropped. This prevents the LLM from hallucinating URLs
+    that look like the configured feeds but were not actually pre-fetched.
     """
     coerced = dict(payload)
 
@@ -105,6 +116,18 @@ def _coerce_payload(payload: dict) -> dict:
         s for s in coerced.get("stories", []) or []
         if isinstance(s, dict) and s.get("source_url")
     ]
+
+    # If we have an allowed set, drop any story whose URL doesn't match a
+    # pre-fetched headline. This catches LLM-hallucinated URLs.
+    if allowed_links:
+        before = len(coerced["stories"])
+        coerced["stories"] = [
+            s for s in coerced["stories"]
+            if _normalize_url(s.get("source_url", "")) in allowed_links
+        ]
+        dropped = before - len(coerced["stories"])
+        if dropped:
+            logger.warning("dropped %d story/stories whose source_url is not in the pre-fetched link set", dropped)
 
     # Source fields
     for src in coerced.get("sources", []) or []:
@@ -141,6 +164,7 @@ def _merge_payload(
 def _parse_payload(
     payload: dict | None,
     snapshot: dict[str, dict[str, str | None]],
+    allowed_links: set[str] | None = None,
 ) -> dict:
     """Validate, coerce, and merge the live market snapshot into the payload.
 
@@ -148,6 +172,9 @@ def _parse_payload(
     dict. The agent loop already emits a fallback digest when its
     LLM call fails to produce parseable JSON, so the `None` path
     here only protects against future refactors.
+
+    If `allowed_links` is provided, stories with source_urls not in
+    that set are dropped during coercion (prevents LLM-hallucinated URLs).
     """
     if not isinstance(payload, dict):
         return {
@@ -162,7 +189,7 @@ def _parse_payload(
             "watch_next_session": [],
             "sources": [],
         }
-    return _merge_payload(_coerce_payload(payload), snapshot)
+    return _merge_payload(_coerce_payload(payload, allowed_links), snapshot)
 
 
 def generate_digest(
@@ -266,7 +293,10 @@ def generate_digest(
                 "sources": [],
             }
         else:
-            payload = _parse_payload(agent_result.parsed_json, snapshot_dict)
+            # Pass the pre-fetched headline URLs so we can drop any
+            # story the LLM may have hallucinated a URL for.
+            allowed_links = {_normalize_url(h.link) for h in headlines}
+            payload = _parse_payload(agent_result.parsed_json, snapshot_dict, allowed_links=allowed_links)
             fallback_used = False
             warning = None
         turns = agent_result.turns
