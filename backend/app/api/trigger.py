@@ -29,13 +29,19 @@ def trigger_session(
     session: str,
     x_reed_token: str | None = Header(default=None),
     config: AppConfig = Depends(get_config),
+    as_of: str | None = None,
     store: DigestStore = Depends(get_store),
 ) -> dict:
     """Run generate_digest for `session` and return the new digest id.
 
     Auth: when `REED_TRIGGER_TOKEN` is set in the environment, the
     `X-REED-Token` header must match. When unset, the endpoint is
-    open (intended for local development only).
+    open only when REED_ENV=dev and we are not on HF (operator override).
+
+    Optional `as_of` query param (ISO-8601 UTC) anchors the time-window
+    RSS filter and the digest's own as_of field. Used for backfilling
+    briefs for past dates when RSS feeds still have the headlines in
+    their payload. Format: ?as_of=2026-07-23T08:00:00Z
     """
     expected = os.environ.get("REED_TRIGGER_TOKEN")
     # Fail closed when token is unset in prod; allow dev only with REED_ENV=dev.
@@ -69,6 +75,14 @@ def trigger_session(
         logger.warning("provider init failed in trigger: %s", exc)
         raise HTTPException(status_code=503, detail=f"provider init failed: {exc}")
 
+    # Parse as_of query param if provided (backfill mode).
+    parsed_as_of = None
+    if as_of:
+        try:
+            parsed_as_of = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"invalid as_of: {as_of!r}; expected ISO-8601 UTC")
+
     try:
         digest = generate_digest(
             session=session,
@@ -76,6 +90,7 @@ def trigger_session(
             provider=provider,
             store=store,
             market_snapshot_meta=None,
+            as_of=parsed_as_of,
         )
     except Exception as exc:
         # The session failed end-to-end (LLM provider error, JSON parse,

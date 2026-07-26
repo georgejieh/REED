@@ -173,8 +173,13 @@ def generate_digest(
     store: DigestStore,
     market_snapshot: dict[str, str] | None = None,
     market_snapshot_meta: MarketSnapshotMeta | None = None,
+    as_of: datetime | None = None,
 ) -> Digest:
     """Generate and persist a digest for the named session.
+
+    `as_of` is the anchor for both the time-window RSS filter and the
+    digest's own as_of field. Defaults to `datetime.now(timezone.utc)`.
+    Pass an explicit `as_of` for backfill to target a past date.
 
     When `provider` is None, uses the stub pipeline for smoke tests.
     Otherwise fetches a market snapshot, runs the agent, parses the
@@ -202,11 +207,14 @@ def generate_digest(
         snapshot_dict = _snapshot_to_dict(snapshot_quotes)
 
         # Pre-flight RSS: fetch curated headlines for this session, filtered
-        # by the session's time_window (e.g. "last 12 hours").
+        # by the session's time_window (e.g. "last 12 hours"). When `as_of`
+        # is set (backfill), the time-window filter anchors to `as_of` so
+        # the headline selection targets the past date range, not "now".
         headlines = fetch_headlines(
             session_def.name,
             time_window=session_def.time_window,
             per_session_cap=25,
+            now=as_of,
         )
         headlines_block = render_for_prompt(headlines)
 
@@ -272,7 +280,7 @@ def generate_digest(
         warning = warning or agent_result.warning
         duration_ms = agent_result.duration_ms
 
-    as_of = datetime.now(timezone.utc)
+    as_of = as_of or datetime.now(timezone.utc)
     # Build values_raw from fetched quotes; never leave it empty when quotes exist.
     values_raw = {
         sym: {

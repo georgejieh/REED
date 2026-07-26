@@ -185,10 +185,14 @@ def fetch_headlines(
     *,
     time_window: str | None = None,
     per_session_cap: int = 25,
+    now: datetime | None = None,
 ) -> list[Headline]:
     """Synchronous entry point. Fetches all configured feeds for `session`,
     dedupes by link, optionally filters by `time_window`, and caps at
     per_session_cap.
+
+    `now` is the anchor for the time-window filter. Default is the current
+    UTC time. Pass an explicit `now` for backfill to target a past date.
     """
     feeds = RSS_FEEDS.get(session, [])
     if not feeds:
@@ -208,10 +212,10 @@ def fetch_headlines(
         headlines = asyncio.run(_fetch_all_async(feeds))
     if time_window:
         before = len(headlines)
-        headlines = filter_by_window(headlines, time_window)
+        headlines = filter_by_window(headlines, time_window, now=now)
         logger.info(
-            "rss filter: kept %d of %d headlines for time_window=%r",
-            len(headlines), before, time_window,
+            "rss filter: kept %d of %d headlines for time_window=%r now=%s",
+            len(headlines), before, time_window, now.isoformat() if now else "live",
         )
     return headlines[:per_session_cap]
 
