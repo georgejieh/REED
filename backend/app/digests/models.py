@@ -71,6 +71,7 @@ class Generation(BaseModel):
     scraped_urls: int
     fallback_used: bool
     duration_ms: int
+    warning: str | None = Field(default=None, max_length=500)
 
 
 class Digest(BaseModel):

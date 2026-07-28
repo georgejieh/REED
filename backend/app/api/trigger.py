@@ -16,12 +16,19 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from app.api.deps import get_config, get_store
 from app.config import AppConfig
 from app.digests.generator import generate_digest
+from app.digests.models import Digest, Generation, MarketSnapshotMeta
+from app.digests.redaction import redact_warning
 from app.digests.store import DigestStore
 from app.providers.factory import get_provider
+from app.sessions.registry import all_sessions
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/trigger", tags=["trigger"])
+
+
+# Set of valid session names, shared by scheduler and trigger.
+SESSION_NAMES: set[str] = {s.name for s in all_sessions()}
 
 
 def _parse_as_of(as_of: str) -> datetime:
@@ -76,6 +83,11 @@ def trigger_session(
         if not x_reed_token or not hmac.compare_digest(x_reed_token, expected):
             raise HTTPException(status_code=401, detail="missing or invalid token")
 
+    # Reject unknown sessions before any persistence or provider work.
+    if session not in SESSION_NAMES:
+        logger.warning("trigger rejected unknown session %r", session)
+        raise HTTPException(status_code=400, detail=f"unknown session {session!r}")
+
     # Parse as_of query param if provided (backfill mode). Do this BEFORE
     # the holiday check so the holiday gate can target the backfill date,
     # not today.
@@ -126,12 +138,11 @@ def trigger_session(
         import traceback
         print(f"TRIGGER_FAIL: {type(exc).__name__}: {exc}", flush=True)
         print(f"TRIGGER_FAIL_TRACEBACK:\n{traceback.format_exc()}", flush=True)
-        from app.digests.models import Digest, MarketSnapshotMeta
         # Build a clean stub: clear stories/sources/themes so the public dataset
         # never contains fabricated content. Exception text lives only in the
         # operator-only warning field and the trigger response log.
         now = datetime.now(timezone.utc)
-        warning = f"{type(exc).__name__}: {exc}"[:500]
+        warning = redact_warning(f"{type(exc).__name__}: {exc}")
         digest = Digest(
             session=session,  # type: ignore[arg-type]
             as_of=now,
@@ -151,16 +162,16 @@ def trigger_session(
             themes=[],
             watch_next_session=[],
             sources=[],
-            generation={
-                "provider": "stub",
-                "model": "stub",
-                "agent_turns": 0,
-                "tool_calls": 0,
-                "scraped_urls": 0,
-                "fallback_used": True,
-                "duration_ms": 0,
-                "warning": warning,
-            },
+            generation=Generation(
+                provider="stub",
+                model="stub",
+                agent_turns=0,
+                tool_calls=0,
+                scraped_urls=0,
+                fallback_used=True,
+                duration_ms=0,
+                warning=warning,
+            ),
         )
         store.write(digest)
 

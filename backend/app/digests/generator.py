@@ -17,6 +17,7 @@ from app.agents.runner import run_agent
 from app.agents.tools import get_agent_tools
 from app.config import AppConfig
 from app.digests.models import Digest, Generation, MarketSnapshotMeta, Source, Story
+from app.digests.redaction import redact_warning
 from app.digests.store import DigestStore
 from app.market_data.factory import get_market_data_provider
 from app.market_data.base import Quote
@@ -281,12 +282,13 @@ def generate_digest(
             # does not 500 and the cron does not fail closed. The brief
             # is marked fallback_used=True and the warning is exposed in
             # generation.warning so the operator can see it in the API.
+            raw_warning = agent_result.warning or "agent returned no parseable JSON"
+            warning = redact_warning(raw_warning)
             logger.warning(
                 "agent returned no parseable JSON; emitting fallback digest: %s",
-                agent_result.warning,
+                warning,
             )
             fallback_used = True
-            warning = agent_result.warning or "agent returned no parseable JSON"
             text = (agent_result.final_text or "").strip()
             payload = {
                 "headline": ("[STUB] " + (text[:200] if text else "Brief generation failed")),
@@ -314,7 +316,7 @@ def generate_digest(
         # history carry it, and the dashboard reads the same shape.
         scraped_url_count = 0
         fallback_used = fallback_used or agent_result.fallback_used
-        warning = warning or agent_result.warning
+        warning = redact_warning(warning or agent_result.warning)
         duration_ms = agent_result.duration_ms
 
     # Build values_raw from fetched quotes; never leave it empty when quotes exist.
@@ -358,6 +360,7 @@ def generate_digest(
             scraped_urls=scraped_url_count,
             fallback_used=fallback_used,
             duration_ms=duration_ms,
+            warning=warning,
         ),
     )
     store.write(digest)
