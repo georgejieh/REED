@@ -161,15 +161,15 @@ class OpenAiCompatibleProvider:
                     "selected provider credential is unavailable"
                 )
             headers["authorization"] = f"Bearer {credential}"
-        payload = json.dumps(
-            {
-                "model": self.configuration.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "stream": False,
-            },
-            separators=(",", ":"),
-        ).encode()
+        payload_data: dict[str, object] = {
+            "model": self.configuration.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "stream": False,
+        }
+        if self.configuration.provider is ProviderName.OPENROUTER:
+            payload_data["response_format"] = {"type": "json_object"}
+        payload = json.dumps(payload_data, separators=(",", ":")).encode()
         response = self.transport.request(
             "POST",
             urljoin(self.endpoint + "/", "chat/completions"),
