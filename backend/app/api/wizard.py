@@ -23,7 +23,6 @@ from app.config.models import RuntimeMode, Settings
 from app.config.settings_store import SettingsStore
 from app.config.source_catalog import (
     InvalidSourceSelection,
-    RssSource,
     SourceCatalog,
 )
 from app.intake.policy import OutboundUrlPolicy, UnsafeOutboundUrl

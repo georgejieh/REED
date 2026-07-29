@@ -7,8 +7,9 @@ complete digests. Failed runs never replace the last good digest.
 
 ## Run REED locally
 
-Install Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), and Node.js 18
-or newer. From a fresh clone:
+Install Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), and Node.js
+20.19.0 or newer in the Node 20 line, or Node.js 22.12.0 or newer. From a
+fresh clone:
 
 ```powershell
 cd dashboard

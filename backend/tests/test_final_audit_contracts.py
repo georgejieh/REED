@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ssl
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, Request, status
+from fastapi import Request
 
 from app.security import require_exact_origin
 
@@ -13,10 +13,3 @@ def require_mutation_auth(request: Request) -> None:
     security = request.app.state.security
     require_exact_origin(request, security.allowed_origins)
     security.validate_session(request, csrf=True)
-
-
-def require_same_origin(request: Request) -> None:
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="obsolete authentication dependency",
-    )
