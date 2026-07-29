@@ -190,6 +190,15 @@ CREATE TABLE IF NOT EXISTS rss_catalog_validations (
     result_json TEXT NOT NULL
 );
 """
+MIGRATION_4 = """
+ALTER TABLE published_digest_items
+    ADD COLUMN market_sentiment TEXT NOT NULL DEFAULT 'neutral'
+    CHECK (market_sentiment IN ('bullish', 'bearish', 'mixed', 'neutral'));
+ALTER TABLE published_digest_items
+    ADD COLUMN market_relevance TEXT NOT NULL DEFAULT '';
+ALTER TABLE published_digest_items
+    ADD COLUMN tickers_json TEXT NOT NULL DEFAULT '[]';
+"""
 
 
 def migrate(database: Database) -> None:
@@ -227,3 +236,15 @@ def migrate(database: Database) -> None:
                 COMMIT;
                 """
             )
+            version = 3
+        if version < 4:
+            connection.executescript(
+                "BEGIN IMMEDIATE;\n"
+                + MIGRATION_4
+                + """
+                INSERT INTO schema_migrations(version, applied_at)
+                VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+                COMMIT;
+                """
+            )
+            version = 4

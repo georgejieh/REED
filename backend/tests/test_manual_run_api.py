@@ -45,6 +45,9 @@ class ApiTransport:
                         "headline": "Update",
                         "summary": "A source update.",
                         "source_item_id": "rss-1",
+                        "market_sentiment": "neutral",
+                        "market_relevance": "A Federal Reserve update may inform rate expectations.",
+                        "tickers": [],
                     }
                 ],
             }

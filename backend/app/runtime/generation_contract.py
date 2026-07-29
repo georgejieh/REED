@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import (
@@ -21,8 +23,11 @@ class GeneratedItem(BaseModel):
     headline: str = Field(min_length=1, max_length=500)
     summary: str = Field(min_length=1, max_length=4000)
     source_item_id: str = Field(min_length=1, max_length=500)
+    market_sentiment: Literal["bullish", "bearish", "mixed", "neutral"]
+    market_relevance: str = Field(min_length=1, max_length=500)
+    tickers: list[str] = Field(max_length=8)
 
-    @field_validator("headline", "summary", "source_item_id")
+    @field_validator("headline", "summary", "source_item_id", "market_relevance")
     @classmethod
     def reject_blank_value(cls, value: str) -> str:
         stripped = value.strip()
@@ -30,13 +35,26 @@ class GeneratedItem(BaseModel):
             raise ValueError("generated digest fields must not be blank")
         return stripped
 
+    @field_validator("tickers")
+    @classmethod
+    def validate_tickers(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip().upper() for value in values]
+        if any(
+            not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,9}", value)
+            for value in normalized
+        ):
+            raise ValueError("ticker symbols must be concise exchange-style labels")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("ticker symbols must be unique")
+        return normalized
+
 
 class GeneratedDigest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=500)
     summary: str = Field(min_length=1, max_length=4000)
-    items: list[GeneratedItem] = Field(min_length=1, max_length=50)
+    items: list[GeneratedItem] = Field(min_length=1, max_length=10)
 
     @field_validator("title", "summary")
     @classmethod
@@ -84,9 +102,17 @@ def build_generation_request(
         "market_window": market_window,
         "instructions": [
             "Use supplied validated intake items as the only evidence.",
+            "Return a concise market brief, not a feed recap.",
+            "Write summary as a 2-4 sentence executive thesis explaining the dominant cross-market themes and uncertainty visible in the selected evidence.",
+            "Select at most ten items with a material market, sector, rates, commodity, policy, trade, or company-impact transmission path.",
+            "Omit lifestyle, local, celebrity, crime, weather, and human-interest items unless the supplied evidence establishes a material market impact.",
+            "Retain geopolitics only when the supplied evidence supports a connection to energy, trade, supply chains, currencies, rates, sanctions, or listed companies.",
             "Use only RSS evidence ids in source_item_id fields.",
+            "Set market_sentiment to bullish, bearish, mixed, or neutral for the likely near-term market implication, not as investment advice.",
+            "Use market_relevance to state the evidence-grounded transmission path in one concise sentence.",
+            "Include ticker symbols only for clearly relevant listed companies; exchange suffixes and class shares such as BRK.B or RY.TO are allowed, otherwise return an empty tickers list.",
             "Return one JSON object and no extra prose.",
-            "Do not create queries, URLs, citations, tool calls, or external claims.",
+            "Do not create queries, URLs, citations, tool calls, price targets, trade recommendations, or external claims.",
         ],
         "output_schema": {
             "title": "nonempty string",
@@ -96,6 +122,9 @@ def build_generation_request(
                     "headline": "nonempty string",
                     "summary": "nonempty string",
                     "source_item_id": "id from rss_evidence",
+                    "market_sentiment": "bullish|bearish|mixed|neutral",
+                    "market_relevance": "nonempty evidence-grounded string",
+                    "tickers": ["relevant listed-company ticker symbols, otherwise empty"],
                 }
             ],
         },
@@ -133,6 +162,9 @@ def parse_generated_digest(
                 headline=item.headline,
                 summary=item.summary,
                 source_item_id=item.source_item_id,
+                market_sentiment=item.market_sentiment,
+                market_relevance=item.market_relevance,
+                tickers=item.tickers,
             )
             for item in generated.items
         ],

@@ -142,7 +142,25 @@ export function DigestReader({ digestId }: DigestReaderProps) {
             </span>
             <div className="story-body">
               <h3>{item.headline}</h3>
+              <div className="market-signals" aria-label="Market analysis">
+                <span
+                  className={`sentiment-badge sentiment-${["bullish", "bearish", "mixed", "neutral"].includes(item.market_sentiment) ? item.market_sentiment : "neutral"}`}
+                >
+                  {["bullish", "bearish", "mixed", "neutral"].includes(item.market_sentiment)
+                    ? item.market_sentiment
+                    : "neutral"} implication
+                </span>
+                {item.tickers.map((ticker) => (
+                  <span className="ticker-chip" key={ticker}>
+                    {ticker}
+                  </span>
+                ))}
+              </div>
               <p className="story-summary">{item.summary}</p>
+              <p className="market-relevance">
+                <strong>Why it matters:</strong>{" "}
+                {item.market_relevance || "Relevance not recorded for this historical digest."}
+              </p>
               <dl className="source-evidence">
                 <div>
                   <dt>Source</dt>
