@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from app.intake.policy import OutboundUrlPolicy
 
 
-CATALOG_VERSION = "2026-07-28"
+CATALOG_VERSION = "2026-07-29"
 
 
 @dataclass(frozen=True)
@@ -45,6 +45,31 @@ class SourceCatalog:
                 id="sec-press-releases",
                 name="SEC Press Releases",
                 url="https://www.sec.gov/news/pressreleases.rss",
+            ),
+            RssSource(
+                id="bea-news-releases",
+                name="Bureau of Economic Analysis News Releases",
+                url="https://apps.bea.gov/rss/rss.xml",
+            ),
+            RssSource(
+                id="marketwatch-top-stories",
+                name="MarketWatch Top Stories",
+                url="https://feeds.content.dowjones.io/public/rss/mw_topstories",
+            ),
+            RssSource(
+                id="bbc-business",
+                name="BBC News Business",
+                url="https://feeds.bbci.co.uk/news/business/rss.xml",
+            ),
+            RssSource(
+                id="guardian-business",
+                name="The Guardian Business",
+                url="https://www.theguardian.com/business/rss",
+            ),
+            RssSource(
+                id="npr-business",
+                name="NPR Business",
+                url="https://feeds.npr.org/1017/rss.xml",
             ),
         )
         identifiers = [source.id for source in self.sources]

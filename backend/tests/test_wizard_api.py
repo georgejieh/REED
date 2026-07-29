@@ -50,7 +50,7 @@ def test_initial_state_has_no_defaults_or_secret_fields(tmp_path: Path) -> None:
         "credential_present": False,
         "market_windows": [],
         "rss_source_ids": [],
-        "catalog_version": "2026-07-28",
+        "catalog_version": "2026-07-29",
         "complete": False,
     }
     assert "key" not in response.text.lower()
