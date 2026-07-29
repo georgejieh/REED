@@ -62,6 +62,26 @@ def test_provider_reads_credential_only_at_execution_and_does_not_return_it() ->
     assert secret not in repr(provider)
 
 
+def test_openrouter_requests_json_object_response() -> None:
+    secrets = InMemorySecretStore()
+    secrets.set_credential(ProviderName.OPENROUTER, "private-provider-value")
+    transport = ProviderTransport(provider_response('{"title":"Digest"}'))
+    provider = OpenAiCompatibleProvider(
+        configuration=ProviderConfiguration(
+            provider=ProviderName.OPENROUTER,
+            model="google/gemini-2.5-flash-lite",
+        ),
+        secret_store=secrets,
+        transport=transport,
+    )
+
+    provider.generate("bounded request")
+
+    body = transport.calls[0]["body"]
+    assert isinstance(body, bytes)
+    assert json.loads(body)["response_format"] == {"type": "json_object"}
+
+
 def test_missing_required_provider_credential_fails_before_transport() -> None:
     transport = ProviderTransport(provider_response("{}"))
     provider = OpenAiCompatibleProvider(
