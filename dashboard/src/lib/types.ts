@@ -1,85 +1,82 @@
-/** Sentiment label attached to a story. */
-export type Sentiment = "bullish" | "bearish" | "neutral";
-
-/** Named trading session a digest belongs to. */
-export type SessionName = "pre_market" | "early_market" | "midday" | "close" | "weekend_recap";
-
-/** A ticker referenced in a story. */
-export interface TickerMention {
-  symbol: string;
-  exchange?: string;
+export interface DigestItem {
+  headline: string;
+  summary: string;
+  source_name: string;
+  source_url: string;
+  published_at?: string;
 }
 
-/** A numbered source citation. */
-export interface Source {
-  id: number;
+export interface Digest {
+  id: string;
+  source_run_id: string;
+  market_window: string;
+  title: string;
+  summary: string;
+  published_at: string;
+  items: DigestItem[];
+}
+
+export type ProviderName =
+  | "openrouter"
+  | "ollama"
+  | "openai_compatible";
+
+export type MarketWindow =
+  | "pre_market"
+  | "early_market"
+  | "midday"
+  | "close"
+  | "weekend_recap";
+
+export type RunStatus =
+  | "queued"
+  | "fetching"
+  | "generating"
+  | "validating"
+  | "published"
+  | "failed";
+
+export type SchedulerLease = "inactive" | "leader" | "follower" | "lost";
+
+export interface WizardState {
+  provider: ProviderName | null;
+  model: string | null;
+  endpoint: string | null;
+  credential_present: boolean;
+  market_windows: MarketWindow[];
+  rss_source_ids: string[];
+  catalog_version: string;
+  complete: boolean;
+}
+
+export interface CatalogSource {
+  id: string;
   name: string;
   url: string;
 }
 
-/** A single news story inside a digest. */
-export interface Story {
-  tickers: string[];
-  headline: string;
-  summary: string;
-  sentiment: Sentiment;
-  source_name: string;
-  source_url: string;
+export interface RssCatalog {
+  version: string;
+  sources: CatalogSource[];
 }
 
-/** A single market data point with provenance. */
-export interface MarketSnapshotValue {
-  value: string;
-  change_pct?: string;
-  as_of?: string;
-  delayed: boolean;
+export interface RuntimeStatus {
+  scheduler_active: boolean;
+  scheduler_leader: boolean;
+  scheduler_lease: SchedulerLease;
+  latest_run: {
+    id: string;
+    status: RunStatus;
+  } | null;
 }
 
-/** Provenance block for the market snapshot. */
-export interface MarketSnapshotMeta {
-  source: string;
-  fetched_at: string;
-  values_raw: Record<string, MarketSnapshotValue>;
-  delayed: boolean;
+export interface HealthStatus {
+  status: string;
+  service: string;
 }
 
-/** Runtime metadata about how the digest was produced. */
-export interface Generation {
-  provider: string;
-  model: string;
-  agent_turns: number;
-  tool_calls: number;
-  scraped_urls: number;
-  fallback_used: boolean;
-  duration_ms: number;
-}
-
-/** A complete market digest for one session. */
-export interface Digest {
-  id?: string;
-  session: SessionName;
-  as_of: string;
-  headline: string;
-  executive_summary: string;
-  market_snapshot: Record<string, string>;
-  market_snapshot_meta: MarketSnapshotMeta;
-  stories: Story[];
-  themes: string[];
-  watch_next_session: string[];
-  sources: Source[];
-  generation: Generation;
-}
-
-/** Response shape of `GET /api/snapshot`. The endpoint returns its own
- * meta + values shape, distinct from the stored Digest's
- * market_snapshot + market_snapshot_meta pair, because the snapshot is a
- * fresh provider fetch rather than a persisted digest run. */
-export interface SnapshotResponse {
-  meta: { source: string; fetched_at: string; delayed: boolean };
-  values: Record<string, {
-    value: string;
-    change_pct: string | null;
-    as_of: string | null;
-    delayed: boolean;
-  }>;
+export interface ManualRunResponse {
+  run_id: string;
+  status: "published";
+  published_digest_id: string;
 }

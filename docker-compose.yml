@@ -1,10 +1,14 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8000:7860"
-    env_file:
-      - ./backend/.env
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ./backend/settings.yaml:/app/settings.yaml:ro
-      - ./data/digests:/app/data/digests
+      - ./data:/data
+    environment:
+      REED_RUNTIME_MODE: local
+      REED_DATABASE_PATH: /data/reed.db
+      REED_ALLOWED_HOSTS: 127.0.0.1:8000,localhost:8000
+      REED_LOCAL_ALLOWED_ORIGINS: http://127.0.0.1:8000,http://localhost:8000

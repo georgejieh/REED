@@ -1,22 +1,20 @@
 [project]
 name = "reed"
 version = "0.1.0"
-description = "Real-time Equity and Economic Digest: a scheduled agent runtime."
+description = "A constrained market digest runtime."
 requires-python = ">=3.12"
 dependencies = [
+    "apscheduler>=3.11,<4",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "keyring>=25.7.0",
+    "tzdata>=2025.2",
+]
+
+[dependency-groups]
+dev = [
     "httpx>=0.28",
-    "beautifulsoup4>=4.12",
-    "feedparser>=6.0,<7",
-    "pyyaml>=6.0",
-    "python-dotenv>=1.0",
-    "apscheduler>=3.10",
-    "tenacity>=9.0",
-    "openai>=1.55",
-    "anthropic>=0.39",
-    "exchange-calendars>=4.13.2",
-    "huggingface-hub>=0.34,<2",
+    "pytest>=8.3",
 ]

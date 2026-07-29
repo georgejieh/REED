@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, listDigests, listDigestsFromDataset } from "../lib/api";
+import { ApiError, listDigests } from "../lib/api";
 import type { Digest } from "../lib/types";
-
-export interface UseDigestListOptions {
-  fromDataset?: boolean;
-}
 
 export interface UseDigestListResult {
   digests: Digest[];
@@ -13,66 +9,45 @@ export interface UseDigestListResult {
   refresh: () => void;
 }
 
-/**
- * Loads the digest list. Cancels in-flight requests on unmount or `limit`
- * change via `AbortController`.
- */
-export function useDigestList(
-  limit?: number,
-  opts: UseDigestListOptions = {},
-): UseDigestListResult {
-  const fromDataset = opts.fromDataset ?? false;
+export function useDigestList(limit = 20): UseDigestListResult {
   const [digests, setDigests] = useState<Digest[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
   const activeRef = useRef<Set<AbortController>>(new Set());
 
-  const load = useCallback(
-    async (targetLimit: number, signal: AbortSignal) => {
-      setLoading(true);
-      try {
-        const next = fromDataset
-          ? await listDigestsFromDataset(targetLimit, signal)
-          : await listDigests(targetLimit, signal);
-        if (!signal.aborted) {
-          setDigests(next);
-          setError(null);
-        }
-      } catch (err) {
-        if (signal.aborted) return;
-        if (err instanceof ApiError) {
-          setError(err);
-        } else {
-          setError(new ApiError(0, String(err)));
-        }
-      } finally {
-        if (!signal.aborted) {
-          setLoading(false);
-        }
+  const load = useCallback(async (signal: AbortSignal) => {
+    setLoading(true);
+    try {
+      const next = await listDigests(limit, signal);
+      if (!signal.aborted) {
+        setDigests(next);
+        setError(null);
       }
-    },
-    [fromDataset],
-  );
+    } catch (value) {
+      if (signal.aborted) return;
+      setError(
+        value instanceof ApiError ? value : new ApiError(0, String(value)),
+      );
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, [limit]);
 
   const refresh = useCallback(() => {
     const controller = new AbortController();
     activeRef.current.add(controller);
-    void load(limit ?? 20, controller.signal).finally(() => {
+    void load(controller.signal).finally(() => {
       activeRef.current.delete(controller);
     });
-  }, [limit, load]);
+  }, [load]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    activeRef.current.add(controller);
-    void load(limit ?? 20, controller.signal).finally(() => {
-      activeRef.current.delete(controller);
-    });
+    refresh();
     return () => {
-      activeRef.current.forEach((ctrl) => ctrl.abort());
+      activeRef.current.forEach((controller) => controller.abort());
       activeRef.current.clear();
     };
-  }, [limit, load]);
+  }, [refresh]);
 
   return { digests, loading, error, refresh };
 }

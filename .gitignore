@@ -19,6 +19,9 @@ backend/.env
 dashboard/.env.local
 
 # Runtime data
+*.db
+*.db-wal
+*.db-shm
 data/digests/
 !data/digests/.gitkeep
 data/samples/*.json

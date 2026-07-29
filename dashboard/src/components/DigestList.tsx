@@ -1,3 +1,4 @@
+import { formatDateTime, formatLabel } from "../lib/format";
 import type { Digest } from "../lib/types";
 
 export interface DigestListProps {
@@ -6,56 +7,44 @@ export interface DigestListProps {
   onSelect: (id: string) => void;
 }
 
-interface DateGroup {
-  date: string;
-  items: Digest[];
-}
-
-function groupByDate(digests: Digest[]): DateGroup[] {
-  const map = new Map<string, Digest[]>();
-  for (const digest of digests) {
-    const date = digest.as_of.slice(0, 10);
-    const list = map.get(date) ?? [];
-    list.push(digest);
-    map.set(date, list);
-  }
-  return Array.from(map.entries())
-    .sort(([a], [b]) => (a > b ? -1 : 1))
-    .map(([date, items]) => ({ date, items }));
-}
-
-/** Renders the left rail of selectable digest summaries grouped by date. */
 export function DigestList({ digests, selectedId, onSelect }: DigestListProps) {
-  const groups = groupByDate(digests);
-
   return (
     <section className="digest-list" aria-label="Digest list">
-      <h1>REED</h1>
-      {groups.length === 0 ? (
-        <p className="empty">No digests yet.</p>
+      <header className="pane-header">
+        <div>
+          <p className="eyebrow">PUBLISHED ARCHIVE</p>
+          <h2>Digests</h2>
+        </div>
+        <span className="count-badge" aria-label={`${digests.length} digests`}>
+          {String(digests.length).padStart(2, "0")}
+        </span>
+      </header>
+      {digests.length === 0 ? (
+        <div className="empty-state">
+          <strong>No published digests</strong>
+          <p>
+            Complete setup, then run an enabled market window. Failed and
+            partial drafts never appear here.
+          </p>
+        </div>
       ) : (
-        <div role="list">
-          {groups.map((group) => (
-            <div key={group.date}>
-              <header className="date-header">{group.date}</header>
-              {group.items.map((digest) => (
-                <button
-                  key={digest.id ?? digest.as_of}
-                  type="button"
-                  role="listitem"
-                  aria-current={selectedId === digest.id ? "true" : undefined}
-                  data-testid="digest-list-item"
-                  data-digest-id={digest.id}
-                  onClick={digest.id ? () => {
-                    if (digest.id) onSelect(digest.id);
-                  } : undefined}
-                >
-                  <span className="item-headline">{digest.headline}</span>
-                  <time className="item-time" dateTime={digest.as_of}>
-                    {digest.as_of}
-                  </time>
-                </button>
-              ))}
+        <div role="list" className="digest-items">
+          {digests.map((digest) => (
+            <div role="listitem" className="digest-item" key={digest.id}>
+              <button
+                id={`digest-${digest.id}`}
+                type="button"
+                aria-current={selectedId === digest.id ? "true" : undefined}
+                onClick={() => onSelect(digest.id)}
+              >
+                <span className="item-window">
+                  {formatLabel(digest.market_window)}
+                </span>
+                <span className="item-headline">{digest.title}</span>
+                <time className="item-time" dateTime={digest.published_at}>
+                  {formatDateTime(digest.published_at)}
+                </time>
+              </button>
             </div>
           ))}
         </div>
