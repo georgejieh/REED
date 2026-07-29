@@ -1,18 +1,29 @@
-"""Read endpoint for registered sessions."""
-
 from __future__ import annotations
 
 from fastapi import APIRouter
+from pydantic import BaseModel
 
-from app.sessions.registry import all_sessions
-
-router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+from app.runtime.scheduler import MARKET_WINDOW_SCHEDULES
 
 
-@router.get("")
-def list_sessions() -> list[dict]:
-    """Return the names and time windows of every registered session."""
+router = APIRouter(tags=["sessions"])
+
+
+class SessionPublic(BaseModel):
+    id: str
+    hour: int
+    minute: int
+    weekdays: list[int]
+
+
+@router.get("/api/sessions", response_model=list[SessionPublic])
+def list_sessions() -> list[SessionPublic]:
     return [
-        {"name": s.name, "time_window": s.time_window, "topic": s.topic}
-        for s in all_sessions()
+        SessionPublic(
+            id=identifier,
+            hour=schedule.hour,
+            minute=schedule.minute,
+            weekdays=list(schedule.weekdays),
+        )
+        for identifier, schedule in MARKET_WINDOW_SCHEDULES.items()
     ]

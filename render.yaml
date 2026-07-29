@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: reed-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    numInstances: 1
+    healthCheckPath: /api/health
+    disk:
+      name: reed-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: REED_RUNTIME_MODE
+        value: hosted
+      - key: REED_DATABASE_PATH
+        value: /data/reed.db
+      - key: REED_SCHEDULER_ENABLED
+        value: "true"
+      - key: REED_ALLOWED_HOSTS
+        sync: false
+      - key: REED_HOSTED_BACKEND_ORIGIN
+        sync: false
+      - key: REED_HOSTED_ALLOWED_ORIGINS
+        sync: false
+      - key: REED_HOSTED_OPERATOR_SECRET
+        sync: false
+      - key: REED_OPENROUTER_CREDENTIAL
+        sync: false

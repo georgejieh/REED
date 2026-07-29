@@ -1,30 +1,18 @@
 /// <reference types="vite/client" />
-import type { Digest, SnapshotResponse } from "./types";
-import {
-  DatasetUnavailableError,
-  getDigestFromDataset,
-  getSnapshotFromDataset,
-  listDigestsFromDataset,
-} from "./dataset";
-
-/**
- * Thin typed wrapper around `fetch` for the REED read API.
- *
- * Base URL is read from `VITE_API_BASE` at module load. If unset, falls
- * back to `/` so the production build (served from the same FastAPI
- * process when colocated) and the vite dev proxy (`/api/*` -> backend
- * on :8000) work without configuration.
- *
- * Cross-origin failure mode: if the dashboard is served from a different
- * origin than the API (e.g. dashboard.example.com -> api.example.com),
- * leaving VITE_API_BASE unset causes fetches to hit the dashboard origin
- * and 404 / fail CORS. In that deploy case, set
- * `VITE_API_BASE=https://api.example.com` in the deploy environment.
- */
-const BASE: string = import.meta.env.VITE_API_BASE ?? "/";
+import type {
+  Digest,
+  HealthStatus,
+  ManualRunResponse,
+  MarketWindow,
+  ProviderName,
+  RssCatalog,
+  RuntimeStatus,
+  WizardState,
+} from "./types";
 
 export class ApiError extends Error {
   public readonly status: number;
+
   constructor(status: number, message: string) {
     super(message);
     this.name = "ApiError";
@@ -32,15 +20,116 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "GET", signal });
-  if (!res.ok) {
-    throw new ApiError(res.status, `${path}: ${res.statusText}`);
-  }
-  return (await res.json()) as T;
+const configuredApiBase = (
+  import.meta.env.VITE_REED_API_BASE_URL ?? ""
+).replace(/\/+$/, "");
+let csrfToken: string | null = null;
+
+export function isAdminSurface(): boolean {
+  if (!configuredApiBase) return true;
+  return new URL(configuredApiBase).origin === window.location.origin;
 }
 
-/** GET /api/digests?limit=N. Returns the newest digests first. */
+function apiPath(path: string): string {
+  const normalized = `/${path.replace(/^\/+/, "")}`;
+  return configuredApiBase ? `${configuredApiBase}${normalized}` : normalized;
+}
+
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as {
+      detail?: string | { message?: string };
+    };
+    if (typeof body.detail === "string") return body.detail;
+    if (body.detail?.message) return body.detail.message;
+  } catch {
+    return response.statusText || "Request failed";
+  }
+  return response.statusText || "Request failed";
+}
+
+async function requestJson<T>(
+  path: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(apiPath(path), {
+    ...init,
+    credentials: isAdminSurface() ? "include" : "omit",
+    headers: {
+      Accept: "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(csrfToken && !["GET", "HEAD"].includes(init.method ?? "GET")
+        ? { "X-CSRF-Token": csrfToken }
+        : {}),
+      ...init.headers,
+    },
+    signal,
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await errorMessage(response));
+  }
+  return (await response.json()) as T;
+}
+
+async function requestEmpty(
+  path: string,
+  init: RequestInit,
+): Promise<void> {
+  const response = await fetch(apiPath(path), {
+    ...init,
+    credentials: isAdminSurface() ? "include" : "omit",
+    headers: {
+      Accept: "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+      ...init.headers,
+    },
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await errorMessage(response));
+  }
+}
+
+function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(path, { method: "GET" }, signal);
+}
+
+export async function initializeControlSession(): Promise<void> {
+  if (!isAdminSurface() || csrfToken) return;
+  const bootstrap = await fetch(apiPath("/api/auth/bootstrap"), {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  if (!bootstrap.ok) {
+    throw new ApiError(bootstrap.status, await errorMessage(bootstrap));
+  }
+  const session = await requestJson<{ csrf_token: string }>(
+    "/api/auth/session",
+    { method: "POST" },
+  );
+  csrfToken = session.csrf_token;
+}
+
+export async function loginOperator(secret: string): Promise<void> {
+  const session = await requestJson<{ csrf_token: string }>(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify({ secret }),
+    },
+  );
+  csrfToken = session.csrf_token;
+}
+
+function putJson<T>(path: string, body: unknown): Promise<T> {
+  return requestJson<T>(path, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export function listDigests(limit = 20, signal?: AbortSignal): Promise<Digest[]> {
   return getJson<Digest[]>(
     `/api/digests?limit=${encodeURIComponent(String(limit))}`,
@@ -48,22 +137,72 @@ export function listDigests(limit = 20, signal?: AbortSignal): Promise<Digest[]>
   );
 }
 
-/** GET /api/digests/{id}. Returns one digest by id. */
 export function getDigest(id: string, signal?: AbortSignal): Promise<Digest> {
   return getJson<Digest>(`/api/digests/${encodeURIComponent(id)}`, signal);
 }
 
-/** GET /api/snapshot. Returns the live market snapshot from the configured provider. */
-export function getSnapshot(signal?: AbortSignal): Promise<SnapshotResponse> {
-  return getJson<SnapshotResponse>("/api/snapshot", signal);
+export function getHealth(signal?: AbortSignal): Promise<HealthStatus> {
+  return getJson<HealthStatus>("/api/health", signal);
 }
 
-/** Build-time flag: true when the bundle was compiled with `--mode demo`. */
-export const IS_DEMO_BUILD: boolean = import.meta.env.MODE === "demo";
+export function getRuntimeStatus(
+  signal?: AbortSignal,
+): Promise<RuntimeStatus> {
+  return getJson<RuntimeStatus>("/api/runtime/status", signal);
+}
 
-export {
-  DatasetUnavailableError,
-  getDigestFromDataset,
-  getSnapshotFromDataset,
-  listDigestsFromDataset,
-};
+export function getWizardState(signal?: AbortSignal): Promise<WizardState> {
+  return getJson<WizardState>("/api/wizard/state", signal);
+}
+
+export function getRssCatalog(signal?: AbortSignal): Promise<RssCatalog> {
+  return getJson<RssCatalog>("/api/wizard/rss-catalog", signal);
+}
+
+export function saveProvider(
+  provider: ProviderName,
+  model: string,
+  endpoint?: string,
+): Promise<WizardState> {
+  return putJson<WizardState>("/api/wizard/provider", {
+    provider,
+    model,
+    ...(endpoint ? { endpoint } : {}),
+  });
+}
+
+export function saveCredential(credential: string): Promise<void> {
+  return requestEmpty("/api/wizard/credential", {
+    method: "PUT",
+    body: JSON.stringify({ credential }),
+  });
+}
+
+export function saveMarketWindows(
+  marketWindows: MarketWindow[],
+): Promise<WizardState> {
+  return putJson<WizardState>("/api/wizard/market-windows", {
+    market_windows: marketWindows,
+  });
+}
+
+export function saveRssSources(sourceIds: string[]): Promise<WizardState> {
+  return putJson<WizardState>("/api/wizard/rss-sources", {
+    source_ids: sourceIds,
+  });
+}
+
+export function completeWizard(): Promise<WizardState> {
+  return requestJson<WizardState>("/api/wizard/complete", {
+    method: "POST",
+  });
+}
+
+export function runNow(
+  marketWindow: MarketWindow,
+): Promise<ManualRunResponse> {
+  return requestJson<ManualRunResponse>("/api/admin/runs", {
+    method: "POST",
+    body: JSON.stringify({ market_window: marketWindow }),
+  });
+}
