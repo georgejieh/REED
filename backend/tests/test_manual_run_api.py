@@ -74,7 +74,7 @@ def build_client(path: Path, complete: bool) -> TestClient:
         ),
         secret_store=secrets,
     )
-    with TestClient(app) as client:
+    with TestClient(app):
         runtime = app.state.runtime
         runtime.outbound_transport = ApiTransport()
         runtime.rebuild_pipeline()
