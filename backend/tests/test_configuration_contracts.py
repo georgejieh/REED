@@ -130,7 +130,11 @@ def test_default_catalog_includes_frequent_market_news_and_official_releases() -
         "sec-press-releases",
         "bea-news-releases",
         "marketwatch-top-stories",
+        "cnbc-markets",
+        "yahoo-finance-top-stories",
+        "nyt-economy",
         "bbc-business",
+        "bbc-world",
         "guardian-business",
         "npr-business",
     }

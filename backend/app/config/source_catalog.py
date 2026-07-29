@@ -57,9 +57,29 @@ class SourceCatalog:
                 url="https://feeds.content.dowjones.io/public/rss/mw_topstories",
             ),
             RssSource(
+                id="cnbc-markets",
+                name="CNBC Markets",
+                url="https://www.cnbc.com/id/10000664/device/rss/rss.html",
+            ),
+            RssSource(
+                id="yahoo-finance-top-stories",
+                name="Yahoo Finance Top Stories",
+                url="https://finance.yahoo.com/news/rssindex",
+            ),
+            RssSource(
+                id="nyt-economy",
+                name="The New York Times Economy",
+                url="https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml",
+            ),
+            RssSource(
                 id="bbc-business",
                 name="BBC News Business",
                 url="https://feeds.bbci.co.uk/news/business/rss.xml",
+            ),
+            RssSource(
+                id="bbc-world",
+                name="BBC News World",
+                url="https://feeds.bbci.co.uk/news/world/rss.xml",
             ),
             RssSource(
                 id="guardian-business",
