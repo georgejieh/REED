@@ -36,7 +36,7 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        run: uv run pytest
+        run: uv run python -m pytest
 
       - name: Install Node.js
         uses: actions/setup-node@v4
