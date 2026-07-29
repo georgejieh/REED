@@ -468,11 +468,45 @@ dd {
 
 .story-summary {
   max-width: 850px;
-  margin-bottom: 13px;
+  margin-bottom: 8px;
   color: #cbd5de;
   font-size: 0.88rem;
   line-height: 1.55;
 }
+
+.market-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 9px;
+}
+
+.sentiment-badge,
+.ticker-chip {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sentiment-bullish { border-color: #2f7a5e; color: #79d5a7; }
+.sentiment-bearish { border-color: #914b4b; color: #f1a0a0; }
+.sentiment-mixed { border-color: #856c28; color: #efd47e; }
+.sentiment-neutral { border-color: #506171; color: #b4c1cb; }
+.ticker-chip { color: var(--amber); background: #171407; }
+
+.market-relevance {
+  max-width: 850px;
+  margin: 0 0 13px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.market-relevance strong { color: var(--text); }
 
 .source-evidence {
   display: grid;

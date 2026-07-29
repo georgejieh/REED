@@ -619,9 +619,9 @@ class DigestRepository:
                 connection.execute(
                     """
                     INSERT INTO published_digest_items(
-                        digest_id, position, headline, summary,
-                        source_name, source_url
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        digest_id, position, headline, summary, source_name,
+                        source_url, market_sentiment, market_relevance, tickers_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         digest_id,
@@ -630,6 +630,9 @@ class DigestRepository:
                         item.summary,
                         source["source_name"],
                         source["url"],
+                        item.market_sentiment,
+                        item.market_relevance,
+                        json.dumps(item.tickers, separators=(",", ":")),
                     ),
                 )
             inject("after_digest_insert")
@@ -992,7 +995,8 @@ class DigestRepository:
         items = connection.execute(
             """
             SELECT item.headline, item.summary, item.source_name,
-                   item.source_url, intake.published_at
+                   item.source_url, item.market_sentiment, item.market_relevance,
+                   item.tickers_json, intake.published_at
             FROM published_digest_items AS item
             JOIN published_digests AS digest ON digest.id = item.digest_id
             LEFT JOIN intake_items AS intake
@@ -1009,5 +1013,13 @@ class DigestRepository:
             title=row["title"],
             summary=row["summary"],
             published_at=_datetime(row["published_at"]),
-            items=[PublishedDigestItem.model_validate(dict(item)) for item in items],
+            items=[
+                PublishedDigestItem.model_validate(
+                    {
+                        **dict(item),
+                        "tickers": json.loads(item["tickers_json"]),
+                    }
+                )
+                for item in items
+            ],
         )

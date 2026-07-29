@@ -41,6 +41,9 @@ class PipelineTransport:
                         "headline": "Opening update",
                         "summary": "Markets moved.",
                         "source_item_id": "rss-1",
+                        "market_sentiment": "neutral",
+                        "market_relevance": "Provides a validated market update.",
+                        "tickers": [],
                     }
                 ],
             }
@@ -134,6 +137,9 @@ def test_pipeline_publishes_only_fully_validated_generated_content(
     assert repository.get_run(run_id).status is RunStatus.PUBLISHED
     assert digest.title == "Market update"
     assert digest.items[0].source_url == "https://news.example.com/story"
+    assert digest.items[0].market_sentiment == "neutral"
+    assert digest.items[0].market_relevance == "Provides a validated market update."
+    assert digest.items[0].tickers == []
     context = repository.get_run_context(run_id)
     assert context.window_start_utc == datetime(
         2026, 7, 27, 21, 0, tzinfo=UTC

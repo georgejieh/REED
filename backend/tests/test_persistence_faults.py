@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config.models import Settings
 from app.db.connection import Database
-from app.db.migrations import migrate
+from app.db.migrations import MIGRATION_1, MIGRATION_2, MIGRATION_3, migrate
 from app.digests.models import DigestDraft, DigestDraftItem, IntakeItem
 from app.digests.repository import DigestRepository
 from app.digests.run import RunStatus
@@ -78,7 +78,72 @@ def create_draft(repository: DigestRepository, suffix: str = "one") -> str:
     return run.id
 
 
-def test_empty_database_migrates_with_required_pragmas_and_tables(tmp_path: Path) -> None:
+def test_v3_database_migrates_existing_items_to_market_analysis_defaults(
+    tmp_path: Path,
+) -> None:
+    database = Database(tmp_path / "v3.db")
+    timestamp = "2026-07-29T00:00:00Z"
+    with database.connect() as connection:
+        connection.executescript(MIGRATION_1 + MIGRATION_2 + MIGRATION_3)
+        connection.executemany(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            [(1, timestamp), (2, timestamp), (3, timestamp)],
+        )
+        connection.execute(
+            """
+            INSERT INTO scheduled_executions(
+                id, market_window, scheduled_time_utc, status
+            ) VALUES ('scheduled-1', 'pre_market', ?, 'running')
+            """,
+            (timestamp,),
+        )
+        connection.execute(
+            """
+            INSERT INTO runs(
+                id, scheduled_execution_id, fence_generation, status,
+                created_at, updated_at
+            ) VALUES ('run-1', 'scheduled-1', 0, 'validating', ?, ?)
+            """,
+            (timestamp, timestamp),
+        )
+        connection.execute(
+            """
+            INSERT INTO published_digests(
+                id, source_run_id, scheduled_execution_id, market_window,
+                title, summary, published_at
+            ) VALUES ('digest-1', 'run-1', 'scheduled-1', 'pre_market',
+                      'Legacy digest', 'Legacy summary', ?)
+            """,
+            (timestamp,),
+        )
+        connection.execute(
+            """
+            INSERT INTO published_digest_items(
+                digest_id, position, headline, summary, source_name, source_url
+            ) VALUES ('digest-1', 0, 'Legacy item', 'Legacy item summary',
+                      'Example', 'https://example.com/legacy')
+            """
+        )
+
+    migrate(database)
+
+    with database.connect() as connection:
+        item = connection.execute(
+            """
+            SELECT market_sentiment, market_relevance, tickers_json
+            FROM published_digest_items WHERE digest_id = 'digest-1'
+            """
+        ).fetchone()
+        versions = {
+            row[0] for row in connection.execute("SELECT version FROM schema_migrations")
+        }
+    assert tuple(item) == ("neutral", "", "[]")
+    assert versions == {1, 2, 3, 4}
+
+
+def test_empty_database_migrates_with_required_pragmas_and_tables(
+    tmp_path: Path,
+) -> None:
     database = Database(tmp_path / "reed.db")
     migrate(database)
 

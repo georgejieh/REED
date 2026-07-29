@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+MarketSentiment = Literal["bullish", "bearish", "mixed", "neutral"]
 
 
 class IntakeItem(BaseModel):
@@ -26,6 +30,9 @@ class DigestDraftItem(BaseModel):
     headline: str
     summary: str
     source_item_id: str
+    market_sentiment: MarketSentiment = "neutral"
+    market_relevance: str = ""
+    tickers: list[str] = Field(default_factory=list)
 
 
 class DigestDraft(BaseModel):
@@ -46,6 +53,9 @@ class PublishedDigestItem(BaseModel):
     source_name: str
     source_url: str
     published_at: datetime | None = None
+    market_sentiment: MarketSentiment = "neutral"
+    market_relevance: str = ""
+    tickers: list[str] = Field(default_factory=list)
 
 
 class PublishedDigest(BaseModel):

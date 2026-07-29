@@ -4,6 +4,9 @@ export interface DigestItem {
   source_name: string;
   source_url: string;
   published_at?: string;
+  market_sentiment: "bullish" | "bearish" | "mixed" | "neutral";
+  market_relevance: string;
+  tickers: string[];
 }
 
 export interface Digest {
