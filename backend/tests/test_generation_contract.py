@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
+from app.intake.models import RssItem
+from app.runtime.generator import DigestGenerator
 from app.runtime.generation_contract import InvalidGeneration, parse_generated_digest
 
 
@@ -73,3 +76,53 @@ def test_parse_generated_digest_rejects_untrusted_ticker_labels() -> None:
             market_window="pre_market",
             permitted_source_ids={"rss-1"},
         )
+
+
+class SequentialProvider:
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = responses
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.responses.pop(0)
+
+
+def test_digest_generator_retries_once_after_contract_validation_failure() -> None:
+    valid_content = json.dumps(
+        {
+            "title": "Market update",
+            "summary": "A concise evidence-grounded market thesis.",
+            "items": [
+                {
+                    "headline": "Company update",
+                    "summary": "A validated source update.",
+                    "source_item_id": "rss-1",
+                    "market_sentiment": "neutral",
+                    "market_relevance": "Could affect the named company's sector.",
+                    "tickers": [],
+                }
+            ],
+        }
+    )
+    provider = SequentialProvider(["not-json", valid_content])
+    item = RssItem(
+        id="rss-1",
+        feed_id="feed-1",
+        outlet="Example",
+        title="Company update",
+        canonical_url="https://example.com/story",
+        published_at=datetime(2026, 7, 29, tzinfo=UTC),
+        retrieved_at=datetime(2026, 7, 29, tzinfo=UTC),
+        source_url="https://example.com/feed.xml",
+        summary="A validated source update.",
+    )
+
+    digest = DigestGenerator(provider).generate(
+        market_window="pre_market",
+        rss_items=(item,),
+    )
+
+    assert digest.title == "Market update"
+    assert len(provider.prompts) == 2
+    assert "previous response was rejected" in provider.prompts[1]
