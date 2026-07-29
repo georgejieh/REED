@@ -121,6 +121,21 @@ def test_hosted_environment_store_is_read_only(monkeypatch: pytest.MonkeyPatch) 
         store.set_credential(ProviderName.OPENROUTER, "replacement")
 
 
+def test_default_catalog_includes_frequent_market_news_and_official_releases() -> None:
+    catalog = SourceCatalog()
+
+    assert catalog.version == "2026-07-29"
+    assert {source.id for source in catalog.sources} == {
+        "federal-reserve",
+        "sec-press-releases",
+        "bea-news-releases",
+        "marketwatch-top-stories",
+        "bbc-business",
+        "guardian-business",
+        "npr-business",
+    }
+
+
 def test_source_catalog_rejects_unsafe_builtin_url() -> None:
     with pytest.raises(UnsafeOutboundUrl):
         SourceCatalog(
