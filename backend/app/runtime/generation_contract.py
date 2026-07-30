@@ -65,8 +65,20 @@ class GeneratedDigest(BaseModel):
         return stripped
 
 
+InvalidGenerationCategory = Literal["empty", "malformed_json", "untrusted_reference"]
+
+
 class InvalidGeneration(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: InvalidGenerationCategory,
+        retry_exhausted: bool = False,
+    ):
+        super().__init__(message)
+        self.category = category
+        self.retry_exhausted = retry_exhausted
 
 
 def build_generation_request(
@@ -139,18 +151,29 @@ def parse_generated_digest(
     *,
     market_window: str,
     permitted_source_ids: set[str],
+    retry_exhausted: bool = False,
 ) -> DigestDraft:
     if not content.strip():
-        raise InvalidGeneration("generation content is empty")
+        raise InvalidGeneration(
+            "generation content is empty",
+            category="empty",
+            retry_exhausted=retry_exhausted,
+        )
     try:
         payload = json.loads(content)
         generated = GeneratedDigest.model_validate(payload)
     except (json.JSONDecodeError, ValidationError) as error:
-        raise InvalidGeneration("generation content is malformed") from error
+        raise InvalidGeneration(
+            "generation content is malformed",
+            category="malformed_json",
+            retry_exhausted=retry_exhausted,
+        ) from error
     referenced = {item.source_item_id for item in generated.items}
     if not referenced.issubset(permitted_source_ids):
         raise InvalidGeneration(
-            "generation references intake evidence that was not supplied"
+            "generation references intake evidence that was not supplied",
+            category="untrusted_reference",
+            retry_exhausted=retry_exhausted,
         )
     return DigestDraft(
         id=str(uuid4()),

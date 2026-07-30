@@ -13,6 +13,7 @@ from app.intake.rss import RssIntake, RssIntakeFailure, compute_window_bounds
 from app.intake.searxng import SearxngEnricher
 from app.providers.factory import build_provider
 from app.runtime.generator import DigestGenerator
+from app.runtime.generation_contract import InvalidGeneration
 from app.secrets.base import SecretStore
 
 
@@ -188,5 +189,10 @@ class RuntimePipeline:
     def _diagnostic(error: Exception) -> str:
         if isinstance(error, RssIntakeFailure):
             return f"rss intake failed: {error.code.value}"
+        if isinstance(error, InvalidGeneration) and error.retry_exhausted:
+            # Exhausted retries map to a fixed, bounded, redacted internal
+            # diagnostic named only by the safe failure category. Raw invalid
+            # model output is never included or persisted.
+            return redact_diagnostic(f"generation retry exhausted: {error.category}")
         text = str(error).strip()
         return redact_diagnostic(text or error.__class__.__name__)
