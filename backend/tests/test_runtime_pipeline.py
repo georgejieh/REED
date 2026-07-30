@@ -20,7 +20,7 @@ from app.db.migrations import migrate
 from app.digests.repository import DigestRepository
 from app.digests.run import RunStatus
 from app.intake.policy import OutboundResponse
-from app.runtime.pipeline import RuntimePipeline
+from app.runtime.pipeline import PipelineFailure, RuntimePipeline
 from app.secrets.in_memory_store import InMemorySecretStore
 
 
@@ -180,6 +180,61 @@ def test_empty_or_malformed_generation_fails_and_preserves_last_digest(
 
     assert repository.get_run(second_run).status is RunStatus.FAILED
     assert [digest.id for digest in repository.list_published()] == [first_digest.id]
+
+
+@pytest.mark.parametrize(
+    ("content", "category"),
+    [
+        ("not-json", "malformed_json"),
+        ("{}", "malformed_json"),
+        (
+            PipelineTransport.valid_content().replace("rss-1", "rss-not-supplied"),
+            "untrusted_reference",
+        ),
+    ],
+)
+def test_exhausted_retry_maps_to_bounded_redacted_diagnostic(
+    tmp_path: Path,
+    content: str,
+    category: str,
+) -> None:
+    pipeline, repository, transport = build_pipeline(tmp_path / "reed.db")
+    run_id = create_run(repository, 0)
+    transport.provider_content = content
+
+    with pytest.raises(PipelineFailure) as excinfo:
+        pipeline.execute(run_id)
+
+    expected = f"generation retry exhausted: {category}"
+    failure = excinfo.value
+    assert failure.diagnostic == expected
+    # The exhausted retry is persisted as a fixed, bounded, redacted
+    # internal diagnostic on the failed run.
+    persisted = repository.get_run(run_id)
+    assert persisted.status is RunStatus.FAILED
+    assert persisted.diagnostic == expected
+    assert len(persisted.diagnostic) <= 500
+    # Raw invalid model output is never persisted in the diagnostic.
+    assert content.strip() not in persisted.diagnostic
+    assert repository.list_published() == []
+
+
+def test_exhausted_retry_diagnostic_is_fixed_and_never_contains_raw_output(
+    tmp_path: Path,
+) -> None:
+    pipeline, repository, transport = build_pipeline(tmp_path / "reed.db")
+    run_id = create_run(repository, 0)
+    transport.provider_content = '{"title": "token=private-value broken"'
+
+    with pytest.raises(PipelineFailure):
+        pipeline.execute(run_id)
+
+    persisted = repository.get_run(run_id)
+    assert persisted.status is RunStatus.FAILED
+    assert persisted.diagnostic == "generation retry exhausted: malformed_json"
+    assert "private-value" not in persisted.diagnostic
+    assert "broken" not in persisted.diagnostic
+    assert repository.list_published() == []
 
 
 def test_search_never_runs_when_rss_minimum_is_unmet(tmp_path: Path) -> None:
