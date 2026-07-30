@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
-from threading import Event, Thread
+from threading import Event, Lock, Thread, current_thread
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -191,6 +191,7 @@ class SchedulerCoordinator:
         self.lease_status = LeaseStatus.INACTIVE
         self._leader_wait_stop = Event()
         self._leader_wait_thread: Thread | None = None
+        self._coordinator_lock = Lock()
 
     @property
     def status(self) -> SchedulerStatus:
@@ -224,25 +225,62 @@ class SchedulerCoordinator:
             lease_expiry=now + lease_ttl,
         )
         if fence is None:
-            self.lease_status = LeaseStatus.FOLLOWER
-            self._start_leader_wait(configuration)
+            with self._coordinator_lock:
+                self.lease_status = LeaseStatus.FOLLOWER
+                self._start_leader_wait(configuration)
             return
-        self._become_leader(configuration, fence)
+        self._promote_to_leader(configuration, fence)
+
+    def _promote_to_leader(
+        self,
+        configuration: RuntimeConfiguration,
+        fence: int,
+    ) -> None:
+        """Serialize ownership transitions so only one scheduler/job set installs.
+
+        Must be called with a freshly acquired fence. On failure/cancellation the
+        fence is released back to the repository and state reverts to follower.
+        """
+        with self._coordinator_lock:
+            if self.scheduler is not None and self.scheduler.running:
+                # We won the lease race but lost the transition race; release the
+                # redundant fence so it can be reused.
+                self.repository.release_scheduler_lease(
+                    name=SCHEDULER_LEASE_NAME,
+                    owner=self.owner,
+                    fence_generation=fence,
+                    now=self.clock(),
+                )
+                return
+            self._cancel_leader_wait()
+            try:
+                self._become_leader(configuration, fence)
+            except BaseException:
+                self.repository.release_scheduler_lease(
+                    name=SCHEDULER_LEASE_NAME,
+                    owner=self.owner,
+                    fence_generation=fence,
+                    now=self.clock(),
+                )
+                self.lease_status = LeaseStatus.FOLLOWER
+                self._start_leader_wait(configuration)
+                raise
 
     def stop(self) -> None:
-        self._cancel_leader_wait()
-        if self.scheduler is not None:
-            self.scheduler.shutdown(wait=False)
-            self.scheduler = None
-        if self.lease_fence is not None:
-            self.repository.release_scheduler_lease(
-                name=SCHEDULER_LEASE_NAME,
-                owner=self.owner,
-                fence_generation=self.lease_fence,
-                now=self.clock(),
-            )
-        self.lease_fence = None
-        self.lease_status = LeaseStatus.INACTIVE
+        with self._coordinator_lock:
+            self._cancel_leader_wait()
+            if self.scheduler is not None:
+                self.scheduler.shutdown(wait=False)
+                self.scheduler = None
+            if self.lease_fence is not None:
+                self.repository.release_scheduler_lease(
+                    name=SCHEDULER_LEASE_NAME,
+                    owner=self.owner,
+                    fence_generation=self.lease_fence,
+                    now=self.clock(),
+                )
+            self.lease_fence = None
+            self.lease_status = LeaseStatus.INACTIVE
 
     def reload(self) -> None:
         self.stop()
@@ -338,10 +376,7 @@ class SchedulerCoordinator:
 
         def wait_and_promote() -> None:
             while not self._leader_wait_stop.wait(wait_seconds):
-                if (
-                    self.scheduler is not None
-                    and self.scheduler.running
-                ) or self.lease_status is LeaseStatus.LOST:
+                if self.lease_status is LeaseStatus.LOST:
                     return
                 if self._try_promote(configuration):
                     return
@@ -352,13 +387,16 @@ class SchedulerCoordinator:
     def _cancel_leader_wait(self) -> None:
         self._leader_wait_stop.set()
         if self._leader_wait_thread is not None:
-            self._leader_wait_thread.join(timeout=1)
+            # Never join the thread we are currently executing on; the caller is
+            # responsible for clearing the handle in that case.
+            if self._leader_wait_thread is not current_thread():
+                self._leader_wait_thread.join(timeout=1)
             self._leader_wait_thread = None
         self._leader_wait_stop.clear()
 
     def _try_promote(self, configuration: RuntimeConfiguration) -> bool:
-        if self.scheduler is not None and self.scheduler.running:
-            return True
+        if self.lease_status is LeaseStatus.LOST:
+            return False
         scheduler_config = configuration.scheduler
         now = self.clock()
         fence = self.repository.acquire_scheduler_lease(
@@ -369,10 +407,48 @@ class SchedulerCoordinator:
         )
         if fence is None:
             return False
-        # Cancel the wait before we become leader so the promotion is single-shot
-        self._cancel_leader_wait()
-        self._become_leader(configuration, fence)
+        self._promote_to_leader(configuration, fence)
         return True
+
+    def _become_leader(
+        self,
+        configuration: RuntimeConfiguration,
+        fence: int,
+    ) -> None:
+        scheduler_config = configuration.scheduler
+        self.lease_fence = fence
+        self.lease_status = LeaseStatus.LEADER
+        self.scheduler = BackgroundScheduler(
+            timezone=scheduler_config.timezone,
+            job_defaults={
+                "coalesce": scheduler_config.coalesce,
+                "misfire_grace_time": scheduler_config.misfire_grace_seconds,
+                "max_instances": 1,
+            },
+        )
+        self.scheduler.add_job(
+            self._renew_lease,
+            "interval",
+            seconds=scheduler_config.lease_renewal_seconds,
+            id="scheduler-lease",
+            replace_existing=True,
+        )
+        for window in configuration.market_windows:
+            spec = MARKET_WINDOW_SCHEDULES[window.value]
+            self.scheduler.add_job(
+                self._fire_window,
+                CronTrigger(
+                    day_of_week=",".join(str(day) for day in spec.weekdays),
+                    hour=spec.hour,
+                    minute=spec.minute,
+                    timezone=scheduler_config.timezone,
+                ),
+                args=(window.value,),
+                id=f"market-window:{window.value}",
+                replace_existing=True,
+            )
+        self.scheduler.start()
+        self._recover_missed(configuration, self.clock())
 
     def _fire_window(self, market_window: str) -> None:
         if not self._renew_lease():
