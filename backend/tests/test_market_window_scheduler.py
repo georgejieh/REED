@@ -15,6 +15,7 @@ from app.config.configuration import (
 from app.config.models import Settings
 from app.db.migrations import migrate
 from app.runtime.scheduler import (
+    LeaseStatus,
     SchedulerCoordinator,
     coalesced_occurrences,
     scheduled_occurrence,
@@ -131,6 +132,88 @@ def test_scheduler_invokes_pipeline_directly_without_http() -> None:
             60,
         )
     ]
+
+
+def test_scheduler_follower_becomes_leader_when_lease_expires() -> None:
+    base = datetime(2026, 7, 28, 16, 34, tzinfo=UTC)
+    configuration = RuntimeConfiguration(
+        market_windows=(MarketWindow.CLOSE,),
+        setup_complete=True,
+        scheduler=SchedulerConfiguration(
+            lease_ttl_seconds=30,
+            lease_renewal_seconds=10,
+        ),
+    )
+
+    class Repository:
+        def __init__(self) -> None:
+            self.lease_owner: str = "old-process"
+            self.fence = 1
+            self.expiry = base + timedelta(seconds=30)
+
+        def acquire_scheduler_lease(
+            self, *, owner: str, now: datetime, **_: object
+        ) -> int | None:
+            if self.lease_owner == owner:
+                self.expiry = now + timedelta(seconds=30)
+                return self.fence
+            if now >= self.expiry:
+                self.lease_owner = owner
+                self.fence += 1
+                self.expiry = now + timedelta(seconds=30)
+                return self.fence
+            return None
+
+        def release_scheduler_lease(self, **_: object) -> bool:
+            return True
+
+        def latest_scheduled_time(self, market_window: str) -> datetime:
+            return scheduled_occurrence(
+                market_window,
+                base,
+                configuration.scheduler.timezone,
+            )
+
+    repository = Repository()
+
+    class Clock:
+        def __init__(self) -> None:
+            self._time = base
+
+        def __call__(self) -> datetime:
+            return self._time
+
+        def advance(self, seconds: int) -> None:
+            self._time += timedelta(seconds=seconds)
+
+    clock = Clock()
+
+    coordinator = SchedulerCoordinator(
+        repository=repository,
+        pipeline=SimpleNamespace(),
+        configuration_loader=lambda: configuration,
+        owner="replacement",
+        clock=clock,
+    )
+
+    coordinator.start()
+    assert coordinator.lease_status is LeaseStatus.FOLLOWER
+    assert coordinator.scheduler is None
+
+    clock.advance(31)
+    coordinator.start()
+    assert coordinator.lease_status is LeaseStatus.LEADER
+    assert coordinator.scheduler is not None
+    assert coordinator.scheduler.running
+
+    job_ids = {
+        job.id
+        for job in coordinator.scheduler.get_jobs()
+        if job.id.startswith("market-window:")
+    }
+    assert job_ids == {"market-window:close"}
+
+    coordinator.stop()
 
 
 def test_scheduler_registers_configured_windows_with_explicit_misfire_policy() -> None:
