@@ -6,8 +6,6 @@ from time import monotonic
 from types import SimpleNamespace
 from typing import Callable
 
-import pytest
-
 from app.config.configuration import (
     MarketWindow,
     RuntimeConfiguration,
