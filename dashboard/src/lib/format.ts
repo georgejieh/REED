@@ -5,7 +5,8 @@ const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
-  timeZoneName: "short",
+  timeZone: "America/New_York",
+  timeZoneName: "shortGeneric",
 });
 
 export function formatDateTime(value: string): string {
